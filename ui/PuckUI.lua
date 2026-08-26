@@ -19,7 +19,7 @@ local TextService = game:GetService("TextService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.2.0",
+    Version = "3.2.1",
     Flags = {},
     Window = nil,
 }
@@ -284,13 +284,14 @@ function PuckUI:CreateWindow(settings)
         Parent = screen,
     })
 
-    -- Aztup style textured floral background
+    -- Aztup / rose-style textured floral background
     create("ImageLabel", {
+        Name = "RoseBackground",
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         Image = "rbxassetid://2151741365",
-        ImageColor3 = Color3.fromRGB(150, 150, 150),
-        ImageTransparency = 0.93,
+        ImageColor3 = Color3.fromRGB(170, 170, 170),
+        ImageTransparency = 0.88,
         ScaleType = Enum.ScaleType.Tile,
         TileSize = UDim2.fromOffset(256, 256),
         ZIndex = 3,
