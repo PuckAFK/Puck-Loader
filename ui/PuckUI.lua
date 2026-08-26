@@ -19,7 +19,7 @@ local TextService = game:GetService("TextService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.2.1",
+    Version = "3.2.2",
     Flags = {},
     Window = nil,
 }
@@ -284,19 +284,107 @@ function PuckUI:CreateWindow(settings)
         Parent = screen,
     })
 
-    -- Aztup / rose-style textured floral background
-    create("ImageLabel", {
+    -- Rose/damask background rendered entirely with Roblox UI objects.
+    -- This does NOT depend on an external image asset, so it always displays.
+    local roseBackground = create("Frame", {
         Name = "RoseBackground",
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
-        Image = "rbxassetid://2151741365",
-        ImageColor3 = Color3.fromRGB(170, 170, 170),
-        ImageTransparency = 0.88,
-        ScaleType = Enum.ScaleType.Tile,
-        TileSize = UDim2.fromOffset(256, 256),
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
         ZIndex = 3,
         Parent = main,
     })
+
+    local roseColor = Color3.fromRGB(82, 82, 82)
+    local leafColor = Color3.fromRGB(62, 62, 62)
+
+    local function roundedPart(parent, position, size, rotation, color, transparency)
+        local part = create("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = position,
+            Size = size,
+            Rotation = rotation or 0,
+            BackgroundColor3 = color,
+            BackgroundTransparency = transparency,
+            BorderSizePixel = 0,
+            ZIndex = 3,
+            Parent = parent,
+        })
+        create("UICorner", {
+            CornerRadius = UDim.new(1, 0),
+            Parent = part,
+        })
+        return part
+    end
+
+    local function createRose(x, y, scale, mirrored)
+        local motif = create("Frame", {
+            Name = "RoseMotif",
+            Position = UDim2.fromOffset(x, y),
+            Size = UDim2.fromOffset(math.floor(72 * scale), math.floor(72 * scale)),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            ZIndex = 3,
+            Parent = roseBackground,
+        })
+
+        local c = UDim2.fromScale(0.5, 0.43)
+        local petalW = math.floor(13 * scale)
+        local petalH = math.floor(28 * scale)
+
+        -- Layered petals form a small stylised rose.
+        for i = 0, 5 do
+            local angle = i * 60 + (mirrored and 30 or 0)
+            local rad = math.rad(angle)
+            local radius = 12 * scale
+            roundedPart(
+                motif,
+                UDim2.new(0.5, math.cos(rad) * radius, 0.43, math.sin(rad) * radius),
+                UDim2.fromOffset(petalW, petalH),
+                angle,
+                roseColor,
+                0.62
+            )
+        end
+
+        roundedPart(
+            motif,
+            c,
+            UDim2.fromOffset(math.floor(13 * scale), math.floor(13 * scale)),
+            0,
+            Color3.fromRGB(96, 96, 96),
+            0.50
+        )
+
+        -- Small stem and leaves to make the repeating pattern read as floral/damask.
+        local stem = create("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0),
+            Position = UDim2.new(0.5, 0, 0.60, 0),
+            Size = UDim2.fromOffset(math.max(1, math.floor(2 * scale)), math.floor(22 * scale)),
+            BackgroundColor3 = leafColor,
+            BackgroundTransparency = 0.66,
+            BorderSizePixel = 0,
+            ZIndex = 3,
+            Parent = motif,
+        })
+        roundedPart(motif, UDim2.new(0.5, -8 * scale, 0.72, 0), UDim2.fromOffset(math.floor(18 * scale), math.floor(7 * scale)), -28, leafColor, 0.62)
+        roundedPart(motif, UDim2.new(0.5,  8 * scale, 0.77, 0), UDim2.fromOffset(math.floor(18 * scale), math.floor(7 * scale)),  28, leafColor, 0.62)
+    end
+
+    -- Staggered repeat fills the complete window, including empty areas.
+    local tileX, tileY = 88, 92
+    local row = 0
+    for y = -28, height + tileY, tileY do
+        local offset = (row % 2 == 0) and -22 or 22
+        local column = 0
+        for x = -35 + offset, width + tileX, tileX do
+            local scale = (column % 2 == 0) and 0.72 or 0.62
+            createRose(x, y, scale, (row + column) % 2 == 1)
+            column += 1
+        end
+        row += 1
+    end
 
     create("Frame", {
         Name = "InnerBorder",
