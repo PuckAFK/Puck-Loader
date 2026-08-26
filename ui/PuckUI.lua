@@ -1,17 +1,12 @@
 --[[
-    PuckUI v2.0
+    PuckUI v2.0 - Aztup Hub V3 Edition
     Shared PuckAFK game-script UI.
 
     Visual direction:
-      - compact classic/Aztup-style dark hub
-      - thin titlebar + horizontally scrollable tab strip
-      - two-column bordered group boxes
-      - square checkbox toggles
-      - dense buttons, sliders, inputs and dropdowns
-      - dropdowns use a top-level popup layer so they are never clipped
-      - dedicated titlebar drag handle for reliable dragging
-
-    UI only: no game-specific automation or loader logic.
+      - Aztup-style dark hub with subtle floral background texture
+      - Deep blue accents (text, slider fills, toggles, section borders)
+      - Sliders with values embedded inside the track
+      - Blue-lined group boxes broken by the title
 ]]
 
 local Players = game:GetService("Players")
@@ -29,19 +24,19 @@ local PuckUI = {
 }
 
 local Theme = {
-    Main = Color3.fromRGB(12, 12, 12),
-    Top = Color3.fromRGB(21, 21, 21),
-    Tab = Color3.fromRGB(17, 17, 17),
+    Main = Color3.fromRGB(15, 15, 15),
+    Top = Color3.fromRGB(15, 15, 15),
+    Tab = Color3.fromRGB(15, 15, 15),
     Section = Color3.fromRGB(20, 20, 20),
-    SectionInner = Color3.fromRGB(18, 18, 18),
-    Element = Color3.fromRGB(36, 36, 36),
-    ElementHover = Color3.fromRGB(43, 43, 43),
-    Border = Color3.fromRGB(67, 67, 67),
-    BorderDark = Color3.fromRGB(3, 3, 3),
-    Text = Color3.fromRGB(198, 198, 198),
-    DimText = Color3.fromRGB(150, 150, 150),
-    BrightText = Color3.fromRGB(232, 232, 232),
-    Accent = Color3.fromRGB(20, 126, 235),
+    SectionInner = Color3.fromRGB(20, 20, 20),
+    Element = Color3.fromRGB(30, 30, 30),
+    ElementHover = Color3.fromRGB(40, 40, 40),
+    Border = Color3.fromRGB(45, 45, 45),
+    BorderDark = Color3.fromRGB(0, 0, 0),
+    Text = Color3.fromRGB(180, 180, 180),
+    DimText = Color3.fromRGB(100, 100, 100),
+    BrightText = Color3.fromRGB(235, 235, 235),
+    Accent = Color3.fromRGB(0, 102, 255), -- Signature Aztup Blue
     Danger = Color3.fromRGB(180, 58, 64),
     Success = Color3.fromRGB(48, 145, 78),
 }
@@ -248,8 +243,8 @@ function PuckUI:CreateWindow(settings)
         end)
     end
 
-    local width = tonumber(settings.Width) or 456
-    local height = tonumber(settings.Height) or 520
+    local width = tonumber(settings.Width) or 480
+    local height = tonumber(settings.Height) or 540
     width = math.max(360, width)
     height = math.max(360, height)
 
@@ -285,57 +280,55 @@ function PuckUI:CreateWindow(settings)
         Parent = screen,
     })
 
-    -- Classic double-edge shell.
+    -- Aztup style textured floral background
+    create("ImageLabel", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Image = "rbxassetid://2151741365",
+        ImageColor3 = Color3.fromRGB(60, 60, 60),
+        ImageTransparency = 0.85,
+        ScaleType = Enum.ScaleType.Tile,
+        TileSize = UDim2.fromOffset(250, 250),
+        ZIndex = 3,
+        Parent = main,
+    })
+
     create("Frame", {
         Name = "InnerBorder",
-        Position = UDim2.fromOffset(2, 2),
-        Size = UDim2.new(1, -4, 1, -4),
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
         BackgroundTransparency = 1,
         BorderColor3 = Theme.Border,
         BorderSizePixel = 1,
-        ZIndex = 3,
+        ZIndex = 4,
         Parent = main,
     })
 
     local titleBar = create("Frame", {
         Name = "TitleBar",
-        Position = UDim2.fromOffset(3, 3),
-        Size = UDim2.new(1, -6, 0, 22),
-        BackgroundColor3 = Theme.Top,
-        BorderColor3 = Theme.Border,
-        BorderSizePixel = 1,
+        Position = UDim2.fromOffset(2, 2),
+        Size = UDim2.new(1, -4, 0, 24),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
         ZIndex = 8,
         Parent = main,
     })
 
-    -- Subtle old-school textured strip.
-    create("ImageLabel", {
-        Size = UDim2.fromScale(1, 1),
-        BackgroundTransparency = 1,
-        Image = "rbxassetid://2454009026",
-        ImageColor3 = Color3.fromRGB(75, 75, 75),
-        ImageTransparency = 0.72,
-        ScaleType = Enum.ScaleType.Tile,
-        TileSize = UDim2.fromOffset(32, 16),
-        ZIndex = 9,
-        Parent = titleBar,
-    })
-
-    local titleLabel = codeLabel(titleBar, settings.Name or settings.Title or "PuckAFK", 14, Theme.BrightText, 11)
-    titleLabel.Position = UDim2.fromOffset(5, 0)
+    local titleLabel = codeLabel(titleBar, settings.Name or settings.Title or "Aztup Hub V3", 14, Theme.BrightText, 11)
+    titleLabel.Position = UDim2.fromOffset(6, 0)
     titleLabel.Size = UDim2.new(1, -52, 1, 0)
 
     local close = create("TextButton", {
         Name = "Close",
         AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, -2, 0, 0),
+        Position = UDim2.new(1, -2, 0, 2),
         Size = UDim2.fromOffset(18, 19),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         AutoButtonColor = false,
         Font = Enum.Font.Code,
         Text = "x",
-        TextSize = 11,
+        TextSize = 12,
         TextColor3 = Theme.DimText,
         ZIndex = 15,
         Parent = titleBar,
@@ -344,14 +337,14 @@ function PuckUI:CreateWindow(settings)
     local minimize = create("TextButton", {
         Name = "Minimize",
         AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, -20, 0, 0),
+        Position = UDim2.new(1, -20, 0, 2),
         Size = UDim2.fromOffset(18, 18),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         AutoButtonColor = false,
         Font = Enum.Font.Code,
         Text = "-",
-        TextSize = 11,
+        TextSize = 12,
         TextColor3 = Theme.DimText,
         ZIndex = 15,
         Parent = titleBar,
@@ -372,8 +365,8 @@ function PuckUI:CreateWindow(settings)
 
     local accentTop = create("Frame", {
         Name = "AccentTop",
-        Position = UDim2.fromOffset(3, 23),
-        Size = UDim2.new(1, -6, 0, 1),
+        Position = UDim2.fromOffset(2, 26),
+        Size = UDim2.new(1, -4, 0, 1),
         BackgroundColor3 = Theme.Accent,
         BorderSizePixel = 0,
         ZIndex = 9,
@@ -382,11 +375,11 @@ function PuckUI:CreateWindow(settings)
 
     local tabBar = create("ScrollingFrame", {
         Name = "TabBar",
-        Position = UDim2.fromOffset(3, 25),
-        Size = UDim2.new(1, -6, 0, 20),
+        Position = UDim2.fromOffset(2, 27),
+        Size = UDim2.new(1, -4, 0, 22),
         BackgroundColor3 = Theme.Tab,
-        BorderColor3 = Theme.Border,
-        BorderSizePixel = 1,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
         CanvasSize = UDim2.new(),
         AutomaticCanvasSize = Enum.AutomaticSize.X,
         ScrollingDirection = Enum.ScrollingDirection.X,
@@ -396,28 +389,19 @@ function PuckUI:CreateWindow(settings)
         Parent = main,
     })
 
-    create("Frame", {
-        Position = UDim2.new(0, 0, 1, -1),
-        Size = UDim2.new(1, 0, 0, 1),
-        BackgroundColor3 = Color3.fromRGB(7, 7, 7),
-        BorderSizePixel = 0,
-        ZIndex = 9,
-        Parent = tabBar,
-    })
-
     local tabLayout = create("UIListLayout", {
         FillDirection = Enum.FillDirection.Horizontal,
         HorizontalAlignment = Enum.HorizontalAlignment.Left,
         VerticalAlignment = Enum.VerticalAlignment.Center,
         SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 2),
+        Padding = UDim.new(0, 4),
         Parent = tabBar,
     })
 
     local columnsHost = create("Frame", {
         Name = "ColumnsHost",
-        Position = UDim2.fromOffset(5, 53),
-        Size = UDim2.new(1, -10, 1, -58),
+        Position = UDim2.fromOffset(6, 56),
+        Size = UDim2.new(1, -12, 1, -62),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         ClipsDescendants = false,
@@ -425,8 +409,6 @@ function PuckUI:CreateWindow(settings)
         Parent = main,
     })
 
-    -- Popup layer is NOT inside the scrolling columns.
-    -- This is what fixes dropdowns being hidden under/inside other sections.
     local popupLayer = create("Frame", {
         Name = "PopupLayer",
         Size = UDim2.fromScale(1, 1),
@@ -591,18 +573,15 @@ function PuckUI:CreateWindow(settings)
         if self.CurrentTab then
             self.CurrentTab.Container.Visible = false
             self.CurrentTab.Button.TextColor3 = Theme.Text
-            self.CurrentTab.Button.BackgroundColor3 = Theme.Tab
             self.CurrentTab.Highlight.Visible = false
         end
 
         self.CurrentTab = tab
         tab.Container.Visible = true
         tab.Button.TextColor3 = Theme.Accent
-        tab.Button.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         tab.Highlight.BackgroundColor3 = Theme.Accent
         tab.Highlight.Visible = true
 
-        -- Keep selected tab visible in the horizontal strip.
         task.defer(function()
             if not tab.Button.Parent then return end
             local buttonLeft = tab.Button.AbsolutePosition.X - tabBar.AbsolutePosition.X + tabBar.CanvasPosition.X
@@ -633,13 +612,13 @@ function PuckUI:CreateWindow(settings)
             _currentSection = nil,
         }
 
-        local textSize = TextService:GetTextSize(tab.Name, 12, Enum.Font.Code, Vector2.new(1000, 18))
-        local buttonWidth = math.max(38, textSize.X + 12)
+        local textSize = TextService:GetTextSize(tab.Name, 13, Enum.Font.Code, Vector2.new(1000, 18))
+        local buttonWidth = math.max(38, textSize.X + 10)
 
         local button = create("TextButton", {
             Name = "Tab_" .. tab.Name,
             LayoutOrder = #self.Tabs + 1,
-            Size = UDim2.fromOffset(buttonWidth, 18),
+            Size = UDim2.fromOffset(buttonWidth, 22),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             AutoButtonColor = false,
@@ -651,9 +630,10 @@ function PuckUI:CreateWindow(settings)
             Parent = tabBar,
         })
 
+        -- Aztup top/bottom highlight for active tab
         local highlight = create("Frame", {
-            Position = UDim2.new(0, 2, 1, -1),
-            Size = UDim2.new(1, -4, 0, 1),
+            Position = UDim2.new(0, 0, 1, -1),
+            Size = UDim2.new(1, 0, 0, 1),
             BackgroundColor3 = Theme.Accent,
             BorderSizePixel = 0,
             Visible = false,
@@ -679,14 +659,14 @@ function PuckUI:CreateWindow(settings)
             local leftSide = index == 1
             local scroll = create("ScrollingFrame", {
                 Name = "Column" .. tostring(index),
-                Position = UDim2.new(leftSide and 0 or 0.5, leftSide and 0 or 3, 0, 0),
-                Size = UDim2.new(0.5, -3, 1, 0),
+                Position = UDim2.new(leftSide and 0 or 0.5, leftSide and 0 or 4, 0, 0),
+                Size = UDim2.new(0.5, -4, 1, 0),
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
                 CanvasSize = UDim2.new(),
                 AutomaticCanvasSize = Enum.AutomaticSize.Y,
-                ScrollBarThickness = 3,
-                ScrollBarImageColor3 = Color3.fromRGB(86, 86, 86),
+                ScrollBarThickness = 2,
+                ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60),
                 ScrollingDirection = Enum.ScrollingDirection.Y,
                 ElasticBehavior = Enum.ElasticBehavior.Never,
                 ZIndex = 4,
@@ -695,13 +675,13 @@ function PuckUI:CreateWindow(settings)
 
             create("UIListLayout", {
                 SortOrder = Enum.SortOrder.LayoutOrder,
-                Padding = UDim.new(0, 5),
+                Padding = UDim.new(0, 8),
                 Parent = scroll,
             })
 
             create("UIPadding", {
                 PaddingTop = UDim.new(0, 8),
-                PaddingRight = UDim.new(0, leftSide and 2 or 0),
+                PaddingRight = UDim.new(0, leftSide and 3 or 0),
                 PaddingBottom = UDim.new(0, 5),
                 Parent = scroll,
             })
@@ -721,8 +701,6 @@ function PuckUI:CreateWindow(settings)
         tab.Columns = columns
 
         local function chooseColumn()
-            -- Place the next group box in the shorter column for a more
-            -- balanced classic multi-column layout.
             local leftLayout = columns[1]:FindFirstChildOfClass("UIListLayout")
             local rightLayout = columns[2]:FindFirstChildOfClass("UIListLayout")
             local leftHeight = leftLayout and leftLayout.AbsoluteContentSize.Y or 0
@@ -752,21 +730,23 @@ function PuckUI:CreateWindow(settings)
                 Parent = chooseColumn(),
             })
 
-            create("UIStroke", {
-                Color = Theme.BorderDark,
-                Thickness = 1,
-                Transparency = 0,
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            -- Aztup signature blue top line on the groupbox
+            local topAccentLine = create("Frame", {
+                Position = UDim2.fromOffset(0, 0),
+                Size = UDim2.new(1, 0, 0, 1),
+                BackgroundColor3 = Theme.Accent,
+                BorderSizePixel = 0,
+                ZIndex = 6,
                 Parent = frame,
             })
+            table.insert(window.AccentObjects, topAccentLine)
 
-            -- Group-box title sits over the top border.
+            local titleWidth = TextService:GetTextSize(section.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 12
+            
+            -- Patch to break the border and the blue line for the text
             local headerPatch = create("Frame", {
-                Position = UDim2.fromOffset(6, -6),
-                Size = UDim2.fromOffset(
-                    math.max(48, TextService:GetTextSize(section.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 10),
-                    15
-                ),
+                Position = UDim2.fromOffset(12, -7),
+                Size = UDim2.fromOffset(titleWidth, 14),
                 BackgroundColor3 = Theme.Main,
                 BorderSizePixel = 0,
                 ZIndex = 7,
@@ -774,12 +754,13 @@ function PuckUI:CreateWindow(settings)
             })
 
             local header = codeLabel(headerPatch, section.Name, 12, Theme.BrightText, 8)
-            header.Position = UDim2.fromOffset(4, -1)
-            header.Size = UDim2.new(1, -8, 1, 0)
+            header.Position = UDim2.fromOffset(0, 0)
+            header.Size = UDim2.new(1, 0, 1, 0)
+            header.TextXAlignment = Enum.TextXAlignment.Center
 
             local body = create("Frame", {
                 Name = "Body",
-                Position = UDim2.fromOffset(5, 10),
+                Position = UDim2.fromOffset(6, 12),
                 Size = UDim2.new(1, -12, 0, 0),
                 AutomaticSize = Enum.AutomaticSize.Y,
                 BackgroundTransparency = 1,
@@ -791,12 +772,12 @@ function PuckUI:CreateWindow(settings)
 
             create("UIListLayout", {
                 SortOrder = Enum.SortOrder.LayoutOrder,
-                Padding = UDim.new(0, 1),
+                Padding = UDim.new(0, 3),
                 Parent = body,
             })
 
             create("UIPadding", {
-                PaddingBottom = UDim.new(0, 5),
+                PaddingBottom = UDim.new(0, 6),
                 Parent = body,
             })
 
@@ -806,6 +787,8 @@ function PuckUI:CreateWindow(settings)
             function section:Set(newName)
                 self.Name = tostring(newName or "")
                 header.Text = self.Name
+                local newWidth = TextService:GetTextSize(self.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 12
+                headerPatch.Size = UDim2.fromOffset(newWidth, 14)
             end
 
             table.insert(self.Sections, section)
@@ -826,9 +809,9 @@ function PuckUI:CreateWindow(settings)
         end
 
         function tab:CreateDivider()
-            local row = addControlFrame(7)
+            local row = addControlFrame(9)
             local divider = create("Frame", {
-                Position = UDim2.fromOffset(0, 3),
+                Position = UDim2.fromOffset(0, 4),
                 Size = UDim2.new(1, 0, 0, 1),
                 BackgroundColor3 = Theme.Border,
                 BorderSizePixel = 0,
@@ -876,11 +859,11 @@ function PuckUI:CreateWindow(settings)
 
             local row = addControlFrame(rowHeight)
 
-            local title = codeLabel(row, data.Title or "", 11, Theme.BrightText, 7)
+            local title = codeLabel(row, data.Title or "", 12, Theme.BrightText, 7)
             title.Position = UDim2.fromOffset(0, 0)
             title.Size = UDim2.new(1, 0, 0, 16)
 
-            local body = codeLabel(row, contentText, 10, Theme.DimText, 7)
+            local body = codeLabel(row, contentText, 11, Theme.DimText, 7)
             body.Position = UDim2.fromOffset(0, 16)
             body.Size = UDim2.new(1, 0, 1, -16)
             body.TextWrapped = true
@@ -945,7 +928,7 @@ function PuckUI:CreateWindow(settings)
         function tab:CreateToggle(data)
             data = data or {}
 
-            local row = addControlFrame(19)
+            local row = addControlFrame(18)
             local state = data.CurrentValue == true
             local flag = data.Flag
 
@@ -960,22 +943,13 @@ function PuckUI:CreateWindow(settings)
             })
 
             local box = create("Frame", {
-                Position = UDim2.fromOffset(1, 4),
+                Position = UDim2.fromOffset(2, 3),
                 Size = UDim2.fromOffset(12, 12),
-                BackgroundColor3 = Color3.fromRGB(9, 9, 9),
+                BackgroundColor3 = Color3.fromRGB(15, 15, 15),
                 BorderColor3 = Theme.Border,
                 BorderSizePixel = 1,
                 ZIndex = 7,
                 Parent = row,
-            })
-
-            create("Frame", {
-                Position = UDim2.fromOffset(1, 1),
-                Size = UDim2.new(1, -2, 0, 1),
-                BackgroundColor3 = Color3.fromRGB(58, 58, 58),
-                BorderSizePixel = 0,
-                ZIndex = 8,
-                Parent = box,
             })
 
             local fill = create("Frame", {
@@ -989,9 +963,9 @@ function PuckUI:CreateWindow(settings)
             })
             table.insert(window.AccentObjects, fill)
 
-            local label = codeLabel(row, data.Name or data.Text or "Toggle", 11, state and Theme.Text or Theme.DimText, 7)
-            label.Position = UDim2.fromOffset(20, 0)
-            label.Size = UDim2.new(1, -20, 1, 0)
+            local label = codeLabel(row, data.Name or data.Text or "Toggle", 12, state and Theme.BrightText or Theme.DimText, 7)
+            label.Position = UDim2.fromOffset(22, 0)
+            label.Size = UDim2.new(1, -22, 1, 0)
             label.TextTruncate = Enum.TextTruncate.AtEnd
 
             local object = {}
@@ -999,7 +973,7 @@ function PuckUI:CreateWindow(settings)
             local function apply(value, invokeCallback)
                 state = value == true
                 fill.Visible = state
-                label.TextColor3 = state and Theme.Text or Theme.DimText
+                label.TextColor3 = state and Theme.BrightText or Theme.DimText
 
                 if flag then
                     PuckUI.Flags[flag] = state
@@ -1032,8 +1006,8 @@ function PuckUI:CreateWindow(settings)
         function tab:CreateDropdown(data)
             data = data or {}
 
-            local row = addControlFrame(38)
-            local label = codeLabel(row, data.Name or "Dropdown", 11, Theme.Text, 7)
+            local row = addControlFrame(40)
+            local label = codeLabel(row, data.Name or "Dropdown", 12, Theme.Text, 7)
             label.Size = UDim2.new(1, 0, 0, 16)
 
             local options = {}
@@ -1047,8 +1021,8 @@ function PuckUI:CreateWindow(settings)
             end
 
             local selector = create("TextButton", {
-                Position = UDim2.fromOffset(0, 16),
-                Size = UDim2.new(1, 0, 0, 19),
+                Position = UDim2.fromOffset(0, 18),
+                Size = UDim2.new(1, 0, 0, 20),
                 BackgroundColor3 = Theme.Element,
                 BorderColor3 = Theme.Border,
                 BorderSizePixel = 1,
@@ -1066,7 +1040,7 @@ function PuckUI:CreateWindow(settings)
             local arrow = codeLabel(selector, "v", 10, Theme.DimText, 9)
             arrow.AnchorPoint = Vector2.new(1, 0)
             arrow.Position = UDim2.new(1, -3, 0, 0)
-            arrow.Size = UDim2.fromOffset(12, 18)
+            arrow.Size = UDim2.fromOffset(12, 20)
             arrow.TextXAlignment = Enum.TextXAlignment.Center
 
             local object = {}
@@ -1147,7 +1121,7 @@ function PuckUI:CreateWindow(settings)
                 popup = create("ScrollingFrame", {
                     Position = UDim2.fromOffset(selectorPosition.X, menuY),
                     Size = UDim2.fromOffset(math.max(80, selectorSize.X), menuHeight),
-                    BackgroundColor3 = Color3.fromRGB(18, 18, 18),
+                    BackgroundColor3 = Color3.fromRGB(20, 20, 20),
                     BorderColor3 = Theme.Border,
                     BorderSizePixel = 1,
                     CanvasSize = UDim2.new(),
@@ -1242,7 +1216,8 @@ function PuckUI:CreateWindow(settings)
         function tab:CreateSlider(data)
             data = data or {}
 
-            local row = addControlFrame(35)
+            -- Sliders redesigned for Aztup format: thicker bar, value inside.
+            local row = addControlFrame(34)
             local minimum = tonumber(data.Range and data.Range[1] or data.Min) or 0
             local maximum = tonumber(data.Range and data.Range[2] or data.Max) or 100
             local increment = tonumber(data.Increment) or 1
@@ -1251,18 +1226,13 @@ function PuckUI:CreateWindow(settings)
             local value = tonumber(data.CurrentValue or data.Value) or minimum
             value = math.clamp(value, minimum, maximum)
 
-            local label = codeLabel(row, data.Name or "Slider", 11, Theme.Text, 7)
-            label.Size = UDim2.new(0.68, 0, 0, 16)
-
-            local valueLabel = codeLabel(row, tostring(value) .. suffix, 10, Theme.DimText, 7)
-            valueLabel.Position = UDim2.new(0.68, 0, 0, 0)
-            valueLabel.Size = UDim2.new(0.32, 0, 0, 16)
-            valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+            local label = codeLabel(row, data.Name or "Slider", 11, Theme.DimText, 7)
+            label.Size = UDim2.new(1, 0, 0, 14)
 
             local rail = create("Frame", {
-                Position = UDim2.fromOffset(0, 22),
-                Size = UDim2.new(1, 0, 0, 7),
-                BackgroundColor3 = Color3.fromRGB(9, 9, 9),
+                Position = UDim2.fromOffset(0, 18),
+                Size = UDim2.new(1, 0, 0, 14),
+                BackgroundColor3 = Theme.Element,
                 BorderColor3 = Theme.Border,
                 BorderSizePixel = 1,
                 Active = true,
@@ -1279,6 +1249,11 @@ function PuckUI:CreateWindow(settings)
             })
             table.insert(window.AccentObjects, fill)
 
+            -- The value label is now placed inside the rail to mimic Aztup
+            local valueLabel = codeLabel(rail, tostring(value) .. suffix, 11, Theme.BrightText, 9)
+            valueLabel.Size = UDim2.fromScale(1, 1)
+            valueLabel.TextXAlignment = Enum.TextXAlignment.Center
+
             local draggingSlider = false
             local flag = data.Flag
             local object = {}
@@ -1292,7 +1267,6 @@ function PuckUI:CreateWindow(settings)
                 nextValue = math.clamp(nextValue, minimum, maximum)
                 nextValue = math.floor(nextValue / increment + 0.5) * increment
 
-                -- keep decimals stable for increments such as 0.05 / 0.5
                 if increment < 1 then
                     local decimals = math.max(0, math.ceil(-math.log10(increment)))
                     local factor = 10 ^ decimals
@@ -1374,9 +1348,9 @@ function PuckUI:CreateWindow(settings)
             label.Size = UDim2.new(1, 0, 0, 16)
 
             local box = create("TextBox", {
-                Position = UDim2.fromOffset(0, 16),
+                Position = UDim2.fromOffset(0, 18),
                 Size = UDim2.new(1, 0, 0, 20),
-                BackgroundColor3 = Color3.fromRGB(22, 22, 22),
+                BackgroundColor3 = Theme.Element,
                 BorderColor3 = Theme.Border,
                 BorderSizePixel = 1,
                 ClearTextOnFocus = false,
@@ -1385,15 +1359,15 @@ function PuckUI:CreateWindow(settings)
                 PlaceholderText = tostring(data.PlaceholderText or ""),
                 TextColor3 = Theme.Text,
                 PlaceholderColor3 = Theme.DimText,
-                TextSize = 10,
+                TextSize = 11,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 ZIndex = 8,
                 Parent = row,
             })
 
             create("UIPadding", {
-                PaddingLeft = UDim.new(0, 5),
-                PaddingRight = UDim.new(0, 5),
+                PaddingLeft = UDim.new(0, 6),
+                PaddingRight = UDim.new(0, 6),
                 Parent = box,
             })
 
@@ -1443,18 +1417,6 @@ function PuckUI:CreateWindow(settings)
             return object
         end
 
-        button.MouseEnter:Connect(function()
-            if window.CurrentTab ~= tab then
-                tween(button, 0.08, {BackgroundColor3 = Color3.fromRGB(22, 22, 22)})
-            end
-        end)
-
-        button.MouseLeave:Connect(function()
-            if window.CurrentTab ~= tab then
-                tween(button, 0.08, {BackgroundColor3 = Theme.Tab})
-            end
-        end)
-
         button.MouseButton1Click:Connect(function()
             window:SelectTab(tab)
         end)
@@ -1499,7 +1461,6 @@ function PuckUI:CreateWindow(settings)
         end
     end)
 
-    -- K (or configured key) toggles the whole UI.
     local keyName = tostring(window.ToggleKey or "K")
     local keyCode = Enum.KeyCode[keyName] or Enum.KeyCode.K
 
