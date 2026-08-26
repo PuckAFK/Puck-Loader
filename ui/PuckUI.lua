@@ -19,7 +19,7 @@ local TextService = game:GetService("TextService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.2.2",
+    Version = "3.2.3",
     Flags = {},
     Window = nil,
 }
@@ -296,8 +296,8 @@ function PuckUI:CreateWindow(settings)
         Parent = main,
     })
 
-    local roseColor = Color3.fromRGB(82, 82, 82)
-    local leafColor = Color3.fromRGB(62, 62, 62)
+    local roseColor = Color3.fromRGB(255, 255, 255)
+    local leafColor = Color3.fromRGB(255, 255, 255)
 
     local function roundedPart(parent, position, size, rotation, color, transparency)
         local part = create("Frame", {
@@ -344,7 +344,7 @@ function PuckUI:CreateWindow(settings)
                 UDim2.fromOffset(petalW, petalH),
                 angle,
                 roseColor,
-                0.62
+                0.48
             )
         end
 
@@ -353,8 +353,8 @@ function PuckUI:CreateWindow(settings)
             c,
             UDim2.fromOffset(math.floor(13 * scale), math.floor(13 * scale)),
             0,
-            Color3.fromRGB(96, 96, 96),
-            0.50
+            Color3.fromRGB(255, 255, 255),
+            0.42
         )
 
         -- Small stem and leaves to make the repeating pattern read as floral/damask.
@@ -363,13 +363,13 @@ function PuckUI:CreateWindow(settings)
             Position = UDim2.new(0.5, 0, 0.60, 0),
             Size = UDim2.fromOffset(math.max(1, math.floor(2 * scale)), math.floor(22 * scale)),
             BackgroundColor3 = leafColor,
-            BackgroundTransparency = 0.66,
+            BackgroundTransparency = 0.55,
             BorderSizePixel = 0,
             ZIndex = 3,
             Parent = motif,
         })
-        roundedPart(motif, UDim2.new(0.5, -8 * scale, 0.72, 0), UDim2.fromOffset(math.floor(18 * scale), math.floor(7 * scale)), -28, leafColor, 0.62)
-        roundedPart(motif, UDim2.new(0.5,  8 * scale, 0.77, 0), UDim2.fromOffset(math.floor(18 * scale), math.floor(7 * scale)),  28, leafColor, 0.62)
+        roundedPart(motif, UDim2.new(0.5, -8 * scale, 0.72, 0), UDim2.fromOffset(math.floor(18 * scale), math.floor(7 * scale)), -28, leafColor, 0.50)
+        roundedPart(motif, UDim2.new(0.5,  8 * scale, 0.77, 0), UDim2.fromOffset(math.floor(18 * scale), math.floor(7 * scale)),  28, leafColor, 0.50)
     end
 
     -- Staggered repeat fills the complete window, including empty areas.
