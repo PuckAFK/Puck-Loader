@@ -1,1 +1,409 @@
+--[[
+    PuckAFK Hub - Minimal Animated Loader
 
+    Supported places:
+      Get Rich ASAP : 128481067661991
+      Chicken Farm  : 137233438285284
+
+    Compact loader UI inspired by the supplied reference image.
+]]
+
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+
+local ROUTES = {
+    [128481067661991] = {
+        name = "Get Rich ASAP",
+        source = "github.com/PuckAFK/Get-rich-asap",
+        url = "https://raw.githubusercontent.com/PuckAFK/Get-rich-asap/main/Get%20Rich%20Asap%20Script",
+    },
+    [137233438285284] = {
+        name = "Chicken Farm",
+        source = "github.com/PuckAFK/Chicken-Farm-Auto",
+        url = "https://raw.githubusercontent.com/PuckAFK/Chicken-Farm-Auto/main/Chicken%20Empire",
+    },
+}
+
+local THEME = {
+    panel = Color3.fromRGB(16, 20, 17),
+    stroke = Color3.fromRGB(77, 91, 80),
+    text = Color3.fromRGB(245, 247, 245),
+    muted = Color3.fromRGB(126, 137, 129),
+    track = Color3.fromRGB(49, 58, 51),
+    fill = Color3.fromRGB(245, 247, 245),
+    error = Color3.fromRGB(255, 118, 118),
+    success = Color3.fromRGB(170, 255, 185),
+}
+
+local function tween(object, duration, properties, style, direction)
+    local info = TweenInfo.new(
+        duration,
+        style or Enum.EasingStyle.Quint,
+        direction or Enum.EasingDirection.Out
+    )
+    local t = TweenService:Create(object, info, properties)
+    t:Play()
+    return t
+end
+
+local function getGuiParent(screenGui)
+    if gethui then
+        local ok, result = pcall(gethui)
+        if ok and result then
+            return result
+        end
+    end
+
+    local ok = pcall(function()
+        screenGui.Parent = CoreGui
+    end)
+    if ok and screenGui.Parent then
+        return nil
+    end
+
+    local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
+    return player:WaitForChild("PlayerGui")
+end
+
+local function removeOld()
+    local possibleParents = {CoreGui}
+
+    if gethui then
+        local ok, result = pcall(gethui)
+        if ok and result then
+            table.insert(possibleParents, result)
+        end
+    end
+
+    local player = Players.LocalPlayer
+    if player then
+        local playerGui = player:FindFirstChildOfClass("PlayerGui")
+        if playerGui then
+            table.insert(possibleParents, playerGui)
+        end
+    end
+
+    for _, parent in ipairs(possibleParents) do
+        local old = parent:FindFirstChild("PuckAFKLoader")
+        if old then
+            pcall(function()
+                old:Destroy()
+            end)
+        end
+    end
+end
+
+removeOld()
+
+-- =========================
+-- Minimal UI
+-- =========================
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "PuckAFKLoader"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local parent = getGuiParent(gui)
+if parent then
+    gui.Parent = parent
+end
+
+local card = Instance.new("CanvasGroup")
+card.Name = "LoaderCard"
+card.AnchorPoint = Vector2.new(0.5, 0.5)
+card.Position = UDim2.fromScale(0.5, 0.5)
+card.Size = UDim2.fromOffset(338, 158)
+card.BackgroundColor3 = THEME.panel
+card.BackgroundTransparency = 0.08
+card.BorderSizePixel = 0
+card.GroupTransparency = 1
+card.Parent = gui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 20)
+corner.Parent = card
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = THEME.stroke
+stroke.Thickness = 1
+stroke.Transparency = 0.42
+stroke.Parent = card
+
+local title = Instance.new("TextLabel")
+title.BackgroundTransparency = 1
+title.AnchorPoint = Vector2.new(0.5, 0)
+title.Position = UDim2.new(0.5, 0, 0, 20)
+title.Size = UDim2.new(1, -32, 0, 24)
+title.Font = Enum.Font.GothamBold
+title.Text = "PUCKAFK HUB"
+title.TextColor3 = THEME.text
+title.TextSize = 19
+title.TextXAlignment = Enum.TextXAlignment.Center
+title.Parent = card
+
+local subtitle = Instance.new("TextLabel")
+subtitle.BackgroundTransparency = 1
+subtitle.AnchorPoint = Vector2.new(0.5, 0)
+subtitle.Position = UDim2.new(0.5, 0, 0, 45)
+subtitle.Size = UDim2.new(1, -32, 0, 16)
+subtitle.Font = Enum.Font.GothamMedium
+subtitle.Text = "GAME SCRIPT LOADER"
+subtitle.TextColor3 = THEME.muted
+subtitle.TextSize = 9
+subtitle.TextXAlignment = Enum.TextXAlignment.Center
+subtitle.Parent = card
+
+local status = Instance.new("TextLabel")
+status.BackgroundTransparency = 1
+status.AnchorPoint = Vector2.new(0.5, 0)
+status.Position = UDim2.new(0.5, 0, 0, 72)
+status.Size = UDim2.new(1, -34, 0, 20)
+status.Font = Enum.Font.GothamMedium
+status.Text = "Starting..."
+status.TextColor3 = THEME.text
+status.TextSize = 13
+status.TextXAlignment = Enum.TextXAlignment.Center
+status.Parent = card
+
+local progressTrack = Instance.new("Frame")
+progressTrack.AnchorPoint = Vector2.new(0.5, 0)
+progressTrack.Position = UDim2.new(0.5, 0, 0, 103)
+progressTrack.Size = UDim2.new(1, -50, 0, 7)
+progressTrack.BackgroundColor3 = THEME.track
+progressTrack.BackgroundTransparency = 0.12
+progressTrack.BorderSizePixel = 0
+progressTrack.ClipsDescendants = true
+progressTrack.Parent = card
+
+local trackCorner = Instance.new("UICorner")
+trackCorner.CornerRadius = UDim.new(1, 0)
+trackCorner.Parent = progressTrack
+
+local progressFill = Instance.new("Frame")
+progressFill.Size = UDim2.fromScale(0, 1)
+progressFill.BackgroundColor3 = THEME.fill
+progressFill.BorderSizePixel = 0
+progressFill.Parent = progressTrack
+
+local fillCorner = Instance.new("UICorner")
+fillCorner.CornerRadius = UDim.new(1, 0)
+fillCorner.Parent = progressFill
+
+local detail = Instance.new("TextLabel")
+detail.BackgroundTransparency = 1
+detail.AnchorPoint = Vector2.new(0.5, 0)
+detail.Position = UDim2.new(0.5, 0, 0, 120)
+detail.Size = UDim2.new(1, -34, 0, 18)
+detail.Font = Enum.Font.Gotham
+detail.Text = "Preparing loader..."
+detail.TextColor3 = THEME.muted
+detail.TextSize = 9
+detail.TextXAlignment = Enum.TextXAlignment.Center
+detail.TextTruncate = Enum.TextTruncate.AtEnd
+detail.Parent = card
+
+-- =========================
+-- Animation helpers
+-- =========================
+
+local targetCardSize = UDim2.fromOffset(360, 175)
+
+tween(card, 0.50, {
+    GroupTransparency = 0,
+    Size = targetCardSize,
+}, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+local progressValue = 0
+local changingStatus = false
+
+local function setProgress(value)
+    value = math.clamp(value, 0, 1)
+    progressValue = value
+    tween(progressFill, 0.34, {
+        Size = UDim2.fromScale(value, 1),
+    }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+end
+
+local function setStatus(mainText, detailText, color)
+    while changingStatus do
+        task.wait()
+    end
+    changingStatus = true
+
+    local fadeOutA = tween(status, 0.10, {TextTransparency = 1}, Enum.EasingStyle.Quad)
+    tween(detail, 0.10, {TextTransparency = 1}, Enum.EasingStyle.Quad)
+    fadeOutA.Completed:Wait()
+
+    status.Text = mainText or "Loading..."
+    status.TextColor3 = color or THEME.text
+    detail.Text = detailText or ""
+
+    tween(status, 0.16, {TextTransparency = 0}, Enum.EasingStyle.Quad)
+    tween(detail, 0.16, {TextTransparency = 0}, Enum.EasingStyle.Quad)
+
+    changingStatus = false
+end
+
+local function fail(stage, message)
+    setProgress(math.max(progressValue, 0.08))
+    setStatus(stage or "Loader Error", tostring(message or "Unknown error"), THEME.error)
+    warn("[PuckAFK Hub] " .. tostring(stage) .. ": " .. tostring(message))
+end
+
+local function fetchSource(url)
+    -- Standard HttpGet path used by most supported environments.
+    local ok, result = pcall(function()
+        return game:HttpGet(url)
+    end)
+
+    if ok and type(result) == "string" and #result > 0 then
+        return true, result
+    end
+
+    -- Optional request fallback.
+    local requestFunction = request
+        or http_request
+        or (syn and syn.request)
+        or (http and http.request)
+
+    if type(requestFunction) == "function" then
+        local requestOk, response = pcall(requestFunction, {
+            Url = url,
+            Method = "GET",
+        })
+
+        if requestOk and type(response) == "table" then
+            local body = response.Body or response.body
+            local code = response.StatusCode or response.Status or response.status
+            if type(body) == "string" and #body > 0 and (not code or tonumber(code) == 200) then
+                return true, body
+            end
+        end
+    end
+
+    return false, result or "HTTP request unavailable"
+end
+
+-- =========================
+-- Loader sequence
+-- =========================
+
+task.spawn(function()
+    task.wait(0.18)
+
+    setStatus("Checking Game...", "Waiting for Roblox to finish loading")
+    setProgress(0.08)
+
+    if not game:IsLoaded() then
+        local loaded = false
+        local connection
+        connection = game.Loaded:Connect(function()
+            loaded = true
+            if connection then
+                connection:Disconnect()
+            end
+        end)
+
+        local started = os.clock()
+        while not loaded and not game:IsLoaded() and os.clock() - started < 30 do
+            task.wait(0.05)
+        end
+
+        if connection then
+            pcall(function() connection:Disconnect() end)
+        end
+    end
+
+    setProgress(0.18)
+    task.wait(0.12)
+
+    local placeId = game.PlaceId
+    local route = ROUTES[placeId]
+
+    setStatus("Finding Script...", "PlaceId: " .. tostring(placeId))
+    setProgress(0.30)
+    task.wait(0.20)
+
+    if not route then
+        fail("Unsupported Game", "No PuckAFK script for PlaceId " .. tostring(placeId))
+        return
+    end
+
+    setStatus("Game Found", route.name)
+    setProgress(0.42)
+    task.wait(0.22)
+
+    setStatus("Connecting to GitHub...", route.source)
+    setProgress(0.52)
+
+    local downloadOk, source = fetchSource(route.url)
+    if not downloadOk then
+        fail("Download Failed", source)
+        return
+    end
+
+    setStatus("Downloading Script...", string.format("%s • %.1f KB", route.name, #source / 1024))
+    setProgress(0.68)
+    task.wait(0.20)
+
+    if #source < 20 then
+        fail("Invalid Script", "GitHub returned an unexpectedly small file")
+        return
+    end
+
+    setStatus("Checking Compiler...", "Preparing " .. route.name)
+    setProgress(0.78)
+    task.wait(0.15)
+
+    local compiler = loadstring or load
+    if type(compiler) ~= "function" then
+        fail("Compiler Unavailable", "This environment does not provide loadstring/load")
+        return
+    end
+
+    setStatus("Loading Script...", "Compiling downloaded source")
+    setProgress(0.88)
+
+    local chunk, compileError = compiler(source)
+    if not chunk then
+        fail("Compile Failed", compileError)
+        return
+    end
+
+    setStatus("Launching...", route.name)
+    setProgress(0.96)
+
+    local runtimeFinished = false
+    local runtimeOk = true
+    local runtimeError
+
+    task.spawn(function()
+        runtimeOk, runtimeError = pcall(chunk)
+        runtimeFinished = true
+    end)
+
+    -- Catch immediate startup errors without forcing long-running scripts to return.
+    task.wait(0.20)
+    if runtimeFinished and not runtimeOk then
+        fail("Launch Failed", runtimeError)
+        return
+    end
+
+    setProgress(1)
+    setStatus("Loaded Successfully", route.name, THEME.success)
+
+    task.wait(0.75)
+
+    local fade = tween(card, 0.48, {
+        GroupTransparency = 1,
+        Size = UDim2.fromOffset(340, 160),
+    }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+    fade.Completed:Wait()
+
+    pcall(function()
+        gui:Destroy()
+    end)
+end)
