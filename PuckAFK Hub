@@ -5,7 +5,7 @@
       Get Rich ASAP : 128481067661991
       Chicken Farm  : 137233438285284
 
-    Compact loader UI inspired by the supplied reference image.
+    Compact loader UI with automatic PlaceId detection and an animated manual fallback dropdown.
 ]]
 
 local Players = game:GetService("Players")
@@ -138,7 +138,7 @@ title.AnchorPoint = Vector2.new(0.5, 0)
 title.Position = UDim2.new(0.5, 0, 0, 20)
 title.Size = UDim2.new(1, -32, 0, 24)
 title.Font = Enum.Font.GothamBold
-title.Text = "PUCKAFK HUB"
+title.Text = "⚡  PUCKAFK HUB"
 title.TextColor3 = THEME.text
 title.TextSize = 19
 title.TextXAlignment = Enum.TextXAlignment.Center
@@ -287,6 +287,269 @@ local function fetchSource(url)
     return false, result or "HTTP request unavailable"
 end
 
+
+-- =========================
+-- Manual fallback dropdown
+-- =========================
+
+local function chooseRouteManually(placeId)
+    setStatus("Game Not Detected", "Select a script manually")
+    setProgress(0.30)
+
+    local picker = Instance.new("CanvasGroup")
+    picker.Name = "ManualDropdown"
+    picker.BackgroundTransparency = 1
+    picker.GroupTransparency = 1
+    picker.Position = UDim2.fromOffset(24, 139)
+    picker.Size = UDim2.new(1, -48, 0, 44)
+    picker.Parent = card
+
+    local selectedRoute = nil
+    local open = false
+    local busy = false
+
+    local selector = Instance.new("TextButton")
+    selector.Name = "Selector"
+    selector.Size = UDim2.new(1, 0, 0, 40)
+    selector.BackgroundColor3 = Color3.fromRGB(31, 37, 32)
+    selector.BackgroundTransparency = 0.04
+    selector.BorderSizePixel = 0
+    selector.AutoButtonColor = false
+    selector.Font = Enum.Font.GothamMedium
+    selector.Text = "  Select a script..."
+    selector.TextColor3 = THEME.text
+    selector.TextSize = 12
+    selector.TextXAlignment = Enum.TextXAlignment.Left
+    selector.Parent = picker
+
+    local selectorCorner = Instance.new("UICorner")
+    selectorCorner.CornerRadius = UDim.new(0, 10)
+    selectorCorner.Parent = selector
+
+    local selectorStroke = Instance.new("UIStroke")
+    selectorStroke.Color = THEME.stroke
+    selectorStroke.Thickness = 1
+    selectorStroke.Transparency = 0.48
+    selectorStroke.Parent = selector
+
+    local arrow = Instance.new("TextLabel")
+    arrow.Name = "Arrow"
+    arrow.BackgroundTransparency = 1
+    arrow.AnchorPoint = Vector2.new(1, 0.5)
+    arrow.Position = UDim2.new(1, -13, 0.5, 0)
+    arrow.Size = UDim2.fromOffset(18, 18)
+    arrow.Font = Enum.Font.GothamBold
+    arrow.Text = "⌄"
+    arrow.TextColor3 = THEME.muted
+    arrow.TextSize = 16
+    arrow.Parent = selector
+
+    local menu = Instance.new("CanvasGroup")
+    menu.Name = "Options"
+    menu.BackgroundColor3 = Color3.fromRGB(25, 30, 26)
+    menu.BackgroundTransparency = 0.02
+    menu.BorderSizePixel = 0
+    menu.GroupTransparency = 1
+    menu.Visible = false
+    menu.Position = UDim2.fromOffset(0, 46)
+    menu.Size = UDim2.new(1, 0, 0, 86)
+    menu.ZIndex = 20
+    menu.Parent = picker
+
+    local menuCorner = Instance.new("UICorner")
+    menuCorner.CornerRadius = UDim.new(0, 10)
+    menuCorner.Parent = menu
+
+    local menuStroke = Instance.new("UIStroke")
+    menuStroke.Color = THEME.stroke
+    menuStroke.Thickness = 1
+    menuStroke.Transparency = 0.48
+    menuStroke.Parent = menu
+
+    local menuPadding = Instance.new("UIPadding")
+    menuPadding.PaddingTop = UDim.new(0, 5)
+    menuPadding.PaddingBottom = UDim.new(0, 5)
+    menuPadding.PaddingLeft = UDim.new(0, 5)
+    menuPadding.PaddingRight = UDim.new(0, 5)
+    menuPadding.Parent = menu
+
+    local menuLayout = Instance.new("UIListLayout")
+    menuLayout.Padding = UDim.new(0, 4)
+    menuLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    menuLayout.Parent = menu
+
+    local manualRoutes = {
+        ROUTES[128481067661991],
+        ROUTES[137233438285284],
+    }
+
+    local function setDropdown(openState)
+        if busy then return end
+        open = openState
+
+        if open then
+            menu.Visible = true
+
+            tween(card, 0.28, {
+                Size = UDim2.fromOffset(360, 286),
+            }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+            tween(picker, 0.28, {
+                Size = UDim2.new(1, -48, 0, 136),
+            }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+            tween(menu, 0.18, {
+                GroupTransparency = 0,
+            }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+            tween(arrow, 0.18, {
+                Rotation = 180,
+            }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        else
+            tween(menu, 0.14, {
+                GroupTransparency = 1,
+            }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+            tween(arrow, 0.18, {
+                Rotation = 0,
+            }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+            task.delay(0.14, function()
+                if menu and menu.Parent and not open then
+                    menu.Visible = false
+                end
+            end)
+
+            tween(picker, 0.24, {
+                Size = UDim2.new(1, -48, 0, 44),
+            }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+            tween(card, 0.24, {
+                Size = UDim2.fromOffset(360, 226),
+            }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        end
+    end
+
+    selector.MouseButton1Click:Connect(function()
+        if busy then return end
+        setDropdown(not open)
+    end)
+
+    selector.MouseEnter:Connect(function()
+        if busy then return end
+        tween(selector, 0.14, {
+            BackgroundColor3 = Color3.fromRGB(39, 46, 40),
+        }, Enum.EasingStyle.Quad)
+    end)
+
+    selector.MouseLeave:Connect(function()
+        if busy then return end
+        tween(selector, 0.14, {
+            BackgroundColor3 = Color3.fromRGB(31, 37, 32),
+        }, Enum.EasingStyle.Quad)
+    end)
+
+    for index, option in ipairs(manualRoutes) do
+        local item = Instance.new("TextButton")
+        item.Name = "Option" .. tostring(index)
+        item.LayoutOrder = index
+        item.Size = UDim2.new(1, 0, 0, 35)
+        item.BackgroundColor3 = Color3.fromRGB(31, 37, 32)
+        item.BackgroundTransparency = 0.18
+        item.BorderSizePixel = 0
+        item.AutoButtonColor = false
+        item.Font = Enum.Font.GothamMedium
+        item.Text = "  " .. option.name
+        item.TextColor3 = THEME.text
+        item.TextSize = 11
+        item.TextXAlignment = Enum.TextXAlignment.Left
+        item.ZIndex = 21
+        item.Parent = menu
+
+        local itemCorner = Instance.new("UICorner")
+        itemCorner.CornerRadius = UDim.new(0, 7)
+        itemCorner.Parent = item
+
+        item.MouseEnter:Connect(function()
+            if busy then return end
+            tween(item, 0.12, {
+                BackgroundColor3 = Color3.fromRGB(43, 52, 44),
+                BackgroundTransparency = 0.02,
+            }, Enum.EasingStyle.Quad)
+        end)
+
+        item.MouseLeave:Connect(function()
+            if busy then return end
+            tween(item, 0.12, {
+                BackgroundColor3 = Color3.fromRGB(31, 37, 32),
+                BackgroundTransparency = 0.18,
+            }, Enum.EasingStyle.Quad)
+        end)
+
+        item.MouseButton1Click:Connect(function()
+            if busy then return end
+            busy = true
+            selectedRoute = option
+
+            selector.Text = "  " .. option.name
+            setStatus("Script Selected", option.name)
+
+            tween(item, 0.14, {
+                BackgroundColor3 = Color3.fromRGB(45, 70, 50),
+                BackgroundTransparency = 0,
+            }, Enum.EasingStyle.Quad)
+
+            tween(menu, 0.14, {
+                GroupTransparency = 1,
+            }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+            tween(arrow, 0.14, {
+                Rotation = 0,
+            }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+            task.wait(0.16)
+        end)
+    end
+
+    -- Expand just enough to reveal the selector.
+    tween(card, 0.32, {
+        Size = UDim2.fromOffset(360, 226),
+    }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+    task.wait(0.10)
+
+    tween(picker, 0.22, {
+        GroupTransparency = 0,
+    }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+    while not selectedRoute and gui.Parent do
+        task.wait(0.03)
+    end
+
+    if not selectedRoute then
+        return nil
+    end
+
+    local pickerFade = tween(picker, 0.18, {
+        GroupTransparency = 1,
+    }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+    pickerFade.Completed:Wait()
+
+    pcall(function()
+        picker:Destroy()
+    end)
+
+    tween(card, 0.30, {
+        Size = targetCardSize,
+    }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+    detail.Text = "Manual selection • " .. selectedRoute.name
+    task.wait(0.12)
+
+    return selectedRoute
+end
+
 -- =========================
 -- Loader sequence
 -- =========================
@@ -328,13 +591,16 @@ task.spawn(function()
     task.wait(0.20)
 
     if not route then
-        fail("Unsupported Game", "No PuckAFK script for PlaceId " .. tostring(placeId))
-        return
+        route = chooseRouteManually(placeId)
+        if not route then
+            fail("No Script Selected", "Manual script selection was closed")
+            return
+        end
     end
 
     setStatus("Game Found", route.name)
     setProgress(0.42)
-    task.wait(0.22)
+    task.wait(0.18)
 
     setStatus("Connecting to GitHub...", route.source)
     setProgress(0.52)
