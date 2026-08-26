@@ -1,17 +1,13 @@
 --[[
-    PuckUI v2.3
+    PuckUI v3.1 - Combined Edition
     Shared PuckAFK game-script UI.
 
-    Visual direction:
-      - compact classic/Aztup-style dark hub
-      - thin titlebar + horizontally scrollable tab strip
-      - two-column bordered group boxes
-      - square checkbox toggles
-      - dense buttons, sliders, inputs and dropdowns
-      - dropdowns use a top-level popup layer so they are never clipped
-      - dedicated titlebar drag handle for reliable dragging
-
-    UI only: no game-specific automation or loader logic.
+    Combined from both supplied PuckUI variants:
+      - Uses the fuller v2.2 control/API implementation as the functional base
+      - Uses the tighter v3.0 "Exact Replica" palette and visual treatment
+      - Keeps notifications, close/minimize, labels, paragraphs, dividers,
+        inputs, refreshable dropdowns, setters/getters, and touch support
+      - Keeps the compact dark/floral Aztup-style presentation
 ]]
 
 local Players = game:GetService("Players")
@@ -23,59 +19,33 @@ local TextService = game:GetService("TextService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "2.3.0",
+    Version = "3.1.0",
     Flags = {},
     Window = nil,
 }
 
 local Theme = {
+    -- v3 "Exact Replica" palette
     Main = Color3.fromRGB(12, 12, 12),
-    Top = Color3.fromRGB(21, 21, 21),
-    Tab = Color3.fromRGB(17, 17, 17),
-    Section = Color3.fromRGB(20, 20, 20),
+    Top = Color3.fromRGB(12, 12, 12),
+    Tab = Color3.fromRGB(12, 12, 12),
+    Section = Color3.fromRGB(18, 18, 18),
     SectionInner = Color3.fromRGB(18, 18, 18),
-    Element = Color3.fromRGB(36, 36, 36),
-    ElementHover = Color3.fromRGB(43, 43, 43),
-    Border = Color3.fromRGB(67, 67, 67),
-    BorderDark = Color3.fromRGB(3, 3, 3),
-    Text = Color3.fromRGB(198, 198, 198),
-    DimText = Color3.fromRGB(150, 150, 150),
-    BrightText = Color3.fromRGB(232, 232, 232),
-    Accent = Color3.fromRGB(20, 126, 235),
+    Element = Color3.fromRGB(24, 24, 24),
+    ElementHover = Color3.fromRGB(32, 32, 32),
+    Border = Color3.fromRGB(45, 45, 45),
+    BorderDark = Color3.fromRGB(5, 5, 5),
+    Text = Color3.fromRGB(170, 170, 170),
+    DimText = Color3.fromRGB(100, 100, 100),
+    BrightText = Color3.fromRGB(230, 230, 230),
+    Accent = Color3.fromRGB(0, 95, 255),
+
+    -- Kept from the fuller build for APIs/notifications that use semantic colors.
     Danger = Color3.fromRGB(180, 58, 64),
     Success = Color3.fromRGB(48, 145, 78),
 }
 
 PuckUI.Theme = Theme
-
--- Shared across every PuckUI copy loaded in the same Roblox session.
--- This means changing the UI toggle key in one PuckAFK script updates
--- every other currently loaded PuckAFK UI too.
-local function getSharedEnvironment()
-    if type(getgenv) == "function" then
-        local ok, env = pcall(getgenv)
-        if ok and type(env) == "table" then
-            return env
-        end
-    end
-    return _G
-end
-
-local SharedEnvironment = getSharedEnvironment()
-SharedEnvironment.__PUCKAFK_UI_SHARED_STATE =
-    SharedEnvironment.__PUCKAFK_UI_SHARED_STATE
-    or {
-        ToggleKeyName = "K",
-        Windows = setmetatable({}, {__mode = "k"}),
-        CapturingWindow = nil,
-        CapturingControl = nil,
-        SuppressToggleUntil = 0,
-    }
-
-local SharedUIState = SharedEnvironment.__PUCKAFK_UI_SHARED_STATE
-SharedUIState.ToggleKeyName = SharedUIState.ToggleKeyName or "K"
-SharedUIState.Windows = SharedUIState.Windows or setmetatable({}, {__mode = "k"})
-SharedUIState.SuppressToggleUntil = SharedUIState.SuppressToggleUntil or 0
 
 local function create(className, properties)
     local object = Instance.new(className)
@@ -277,8 +247,8 @@ function PuckUI:CreateWindow(settings)
         end)
     end
 
-    local width = tonumber(settings.Width) or 456
-    local height = tonumber(settings.Height) or 520
+    local width = tonumber(settings.Width) or 480
+    local height = tonumber(settings.Height) or 540
     width = math.max(360, width)
     height = math.max(360, height)
 
@@ -296,7 +266,7 @@ function PuckUI:CreateWindow(settings)
         Position = UDim2.new(0.5, -math.floor(width / 2) + 4, 0.5, -math.floor(height / 2) + 4),
         Size = UDim2.fromOffset(width, height),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0.45,
+        BackgroundTransparency = 0.5,
         BorderSizePixel = 0,
         ZIndex = 1,
         Parent = screen,
@@ -314,57 +284,55 @@ function PuckUI:CreateWindow(settings)
         Parent = screen,
     })
 
-    -- Classic double-edge shell.
+    -- Aztup style textured floral background
+    create("ImageLabel", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Image = "rbxassetid://2151741365",
+        ImageColor3 = Color3.fromRGB(150, 150, 150),
+        ImageTransparency = 0.93,
+        ScaleType = Enum.ScaleType.Tile,
+        TileSize = UDim2.fromOffset(256, 256),
+        ZIndex = 3,
+        Parent = main,
+    })
+
     create("Frame", {
         Name = "InnerBorder",
-        Position = UDim2.fromOffset(2, 2),
-        Size = UDim2.new(1, -4, 1, -4),
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
         BackgroundTransparency = 1,
         BorderColor3 = Theme.Border,
         BorderSizePixel = 1,
-        ZIndex = 3,
+        ZIndex = 4,
         Parent = main,
     })
 
     local titleBar = create("Frame", {
         Name = "TitleBar",
-        Position = UDim2.fromOffset(3, 3),
-        Size = UDim2.new(1, -6, 0, 22),
-        BackgroundColor3 = Theme.Top,
-        BorderColor3 = Theme.Border,
-        BorderSizePixel = 1,
+        Position = UDim2.fromOffset(2, 2),
+        Size = UDim2.new(1, -4, 0, 24),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
         ZIndex = 8,
         Parent = main,
     })
 
-    -- Subtle old-school textured strip.
-    create("ImageLabel", {
-        Size = UDim2.fromScale(1, 1),
-        BackgroundTransparency = 1,
-        Image = "rbxassetid://2454009026",
-        ImageColor3 = Color3.fromRGB(75, 75, 75),
-        ImageTransparency = 0.72,
-        ScaleType = Enum.ScaleType.Tile,
-        TileSize = UDim2.fromOffset(32, 16),
-        ZIndex = 9,
-        Parent = titleBar,
-    })
-
-    local titleLabel = codeLabel(titleBar, settings.Name or settings.Title or "PuckAFK", 14, Theme.BrightText, 11)
-    titleLabel.Position = UDim2.fromOffset(5, 0)
+    local titleLabel = codeLabel(titleBar, settings.Name or settings.Title or "Aztup Hub V3", 13, Theme.BrightText, 11)
+    titleLabel.Position = UDim2.fromOffset(6, 0)
     titleLabel.Size = UDim2.new(1, -52, 1, 0)
 
     local close = create("TextButton", {
         Name = "Close",
         AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, -2, 0, 0),
+        Position = UDim2.new(1, -2, 0, 2),
         Size = UDim2.fromOffset(18, 19),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         AutoButtonColor = false,
         Font = Enum.Font.Code,
         Text = "x",
-        TextSize = 11,
+        TextSize = 12,
         TextColor3 = Theme.DimText,
         ZIndex = 15,
         Parent = titleBar,
@@ -373,14 +341,14 @@ function PuckUI:CreateWindow(settings)
     local minimize = create("TextButton", {
         Name = "Minimize",
         AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, -20, 0, 0),
+        Position = UDim2.new(1, -20, 0, 2),
         Size = UDim2.fromOffset(18, 18),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         AutoButtonColor = false,
         Font = Enum.Font.Code,
         Text = "-",
-        TextSize = 11,
+        TextSize = 12,
         TextColor3 = Theme.DimText,
         ZIndex = 15,
         Parent = titleBar,
@@ -401,8 +369,8 @@ function PuckUI:CreateWindow(settings)
 
     local accentTop = create("Frame", {
         Name = "AccentTop",
-        Position = UDim2.fromOffset(3, 23),
-        Size = UDim2.new(1, -6, 0, 1),
+        Position = UDim2.fromOffset(2, 26),
+        Size = UDim2.new(1, -4, 0, 1),
         BackgroundColor3 = Theme.Accent,
         BorderSizePixel = 0,
         ZIndex = 9,
@@ -411,11 +379,11 @@ function PuckUI:CreateWindow(settings)
 
     local tabBar = create("ScrollingFrame", {
         Name = "TabBar",
-        Position = UDim2.fromOffset(3, 25),
-        Size = UDim2.new(1, -6, 0, 20),
+        Position = UDim2.fromOffset(2, 27),
+        Size = UDim2.new(1, -4, 0, 22),
         BackgroundColor3 = Theme.Tab,
-        BorderColor3 = Theme.Border,
-        BorderSizePixel = 1,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
         CanvasSize = UDim2.new(),
         AutomaticCanvasSize = Enum.AutomaticSize.X,
         ScrollingDirection = Enum.ScrollingDirection.X,
@@ -425,28 +393,19 @@ function PuckUI:CreateWindow(settings)
         Parent = main,
     })
 
-    create("Frame", {
-        Position = UDim2.new(0, 0, 1, -1),
-        Size = UDim2.new(1, 0, 0, 1),
-        BackgroundColor3 = Color3.fromRGB(7, 7, 7),
-        BorderSizePixel = 0,
-        ZIndex = 9,
-        Parent = tabBar,
-    })
-
     local tabLayout = create("UIListLayout", {
         FillDirection = Enum.FillDirection.Horizontal,
         HorizontalAlignment = Enum.HorizontalAlignment.Left,
         VerticalAlignment = Enum.VerticalAlignment.Center,
         SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 2),
+        Padding = UDim.new(0, 12),
         Parent = tabBar,
     })
 
     local columnsHost = create("Frame", {
         Name = "ColumnsHost",
-        Position = UDim2.fromOffset(5, 53),
-        Size = UDim2.new(1, -10, 1, -58),
+        Position = UDim2.fromOffset(6, 56),
+        Size = UDim2.new(1, -12, 1, -62),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         ClipsDescendants = false,
@@ -454,8 +413,6 @@ function PuckUI:CreateWindow(settings)
         Parent = main,
     })
 
-    -- Popup layer is NOT inside the scrolling columns.
-    -- This is what fixes dropdowns being hidden under/inside other sections.
     local popupLayer = create("Frame", {
         Name = "PopupLayer",
         Size = UDim2.fromScale(1, 1),
@@ -501,18 +458,10 @@ function PuckUI:CreateWindow(settings)
         CloseCallback = nil,
         Minimized = false,
         FullSize = UDim2.fromOffset(width, height),
-        ToggleKeyName = tostring(
-            settings.ToggleUIKeybind
-            or settings.ToggleKeybind
-            or SharedUIState.ToggleKeyName
-            or "K"
-        ),
-        ToggleKeyCode = Enum.KeyCode.K,
-        KeybindDisplays = {},
+        ToggleKey = settings.ToggleUIKeybind or settings.ToggleKeybind or "K",
     }
 
     self.Window = window
-    SharedUIState.Windows[window] = true
 
     ------------------------------------------------------------------------
     -- Reliable dragging
@@ -611,67 +560,8 @@ function PuckUI:CreateWindow(settings)
         self:SetVisible(not self.Main.Visible)
     end
 
-    function window:_ApplyToggleKey(key)
-        local keyCode = nil
-
-        if typeof(key) == "EnumItem" and key.EnumType == Enum.KeyCode then
-            keyCode = key
-        else
-            keyCode = Enum.KeyCode[tostring(key or "")]
-        end
-
-        if not keyCode or keyCode == Enum.KeyCode.Unknown then
-            return false
-        end
-
-        self.ToggleKeyCode = keyCode
-        self.ToggleKeyName = keyCode.Name
-
-        for _, control in ipairs(self.KeybindDisplays or {}) do
-            if control and control._SetKeyName then
-                control:_SetKeyName(self.ToggleKeyName)
-            end
-        end
-
-        return true
-    end
-
-    function window:SetToggleKey(key)
-        local keyCode = nil
-
-        if typeof(key) == "EnumItem" and key.EnumType == Enum.KeyCode then
-            keyCode = key
-        else
-            keyCode = Enum.KeyCode[tostring(key or "")]
-        end
-
-        if not keyCode or keyCode == Enum.KeyCode.Unknown then
-            return false
-        end
-
-        SharedUIState.ToggleKeyName = keyCode.Name
-
-        -- Broadcast to every PuckAFK window that is currently loaded.
-        for otherWindow in pairs(SharedUIState.Windows) do
-            if otherWindow and otherWindow._ApplyToggleKey then
-                otherWindow:_ApplyToggleKey(keyCode)
-            end
-        end
-
-        return true
-    end
-
-    function window:GetToggleKey()
-        return self.ToggleKeyName
-    end
-
     function window:Destroy()
         self:ClosePopup()
-        SharedUIState.Windows[self] = nil
-        if SharedUIState.CapturingWindow == self then
-            SharedUIState.CapturingWindow = nil
-            SharedUIState.CapturingControl = nil
-        end
         if self.ScreenGui then
             self.ScreenGui:Destroy()
         end
@@ -687,18 +577,15 @@ function PuckUI:CreateWindow(settings)
         if self.CurrentTab then
             self.CurrentTab.Container.Visible = false
             self.CurrentTab.Button.TextColor3 = Theme.Text
-            self.CurrentTab.Button.BackgroundColor3 = Theme.Tab
             self.CurrentTab.Highlight.Visible = false
         end
 
         self.CurrentTab = tab
         tab.Container.Visible = true
         tab.Button.TextColor3 = Theme.Accent
-        tab.Button.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         tab.Highlight.BackgroundColor3 = Theme.Accent
         tab.Highlight.Visible = true
 
-        -- Keep selected tab visible in the horizontal strip.
         task.defer(function()
             if not tab.Button.Parent then return end
             local buttonLeft = tab.Button.AbsolutePosition.X - tabBar.AbsolutePosition.X + tabBar.CanvasPosition.X
@@ -717,11 +604,6 @@ function PuckUI:CreateWindow(settings)
         end)
     end
 
-    -- Resolve the initial key now that the window keybind API exists.
-    if not window:_ApplyToggleKey(window.ToggleKeyName) then
-        window:_ApplyToggleKey("K")
-    end
-
     ------------------------------------------------------------------------
     -- Tabs and controls
     ------------------------------------------------------------------------
@@ -734,13 +616,13 @@ function PuckUI:CreateWindow(settings)
             _currentSection = nil,
         }
 
-        local textSize = TextService:GetTextSize(tab.Name, 12, Enum.Font.Code, Vector2.new(1000, 18))
-        local buttonWidth = math.max(38, textSize.X + 12)
+        local textSize = TextService:GetTextSize(tab.Name, 13, Enum.Font.Code, Vector2.new(1000, 18))
+        local buttonWidth = math.max(38, textSize.X + 10)
 
         local button = create("TextButton", {
             Name = "Tab_" .. tab.Name,
             LayoutOrder = #self.Tabs + 1,
-            Size = UDim2.fromOffset(buttonWidth, 18),
+            Size = UDim2.fromOffset(buttonWidth, 22),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             AutoButtonColor = false,
@@ -752,9 +634,10 @@ function PuckUI:CreateWindow(settings)
             Parent = tabBar,
         })
 
+        -- Aztup top/bottom highlight for active tab
         local highlight = create("Frame", {
-            Position = UDim2.new(0, 2, 1, -1),
-            Size = UDim2.new(1, -4, 0, 1),
+            Position = UDim2.new(0, 0, 1, -1),
+            Size = UDim2.new(1, 0, 0, 1),
             BackgroundColor3 = Theme.Accent,
             BorderSizePixel = 0,
             Visible = false,
@@ -780,14 +663,14 @@ function PuckUI:CreateWindow(settings)
             local leftSide = index == 1
             local scroll = create("ScrollingFrame", {
                 Name = "Column" .. tostring(index),
-                Position = UDim2.new(leftSide and 0 or 0.5, leftSide and 0 or 3, 0, 0),
-                Size = UDim2.new(0.5, -3, 1, 0),
+                Position = UDim2.new(leftSide and 0 or 0.5, leftSide and 0 or 4, 0, 0),
+                Size = UDim2.new(0.5, -4, 1, 0),
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
                 CanvasSize = UDim2.new(),
                 AutomaticCanvasSize = Enum.AutomaticSize.Y,
-                ScrollBarThickness = 3,
-                ScrollBarImageColor3 = Color3.fromRGB(86, 86, 86),
+                ScrollBarThickness = 2,
+                ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60),
                 ScrollingDirection = Enum.ScrollingDirection.Y,
                 ElasticBehavior = Enum.ElasticBehavior.Never,
                 ZIndex = 4,
@@ -796,13 +679,13 @@ function PuckUI:CreateWindow(settings)
 
             create("UIListLayout", {
                 SortOrder = Enum.SortOrder.LayoutOrder,
-                Padding = UDim.new(0, 5),
+                Padding = UDim.new(0, 8),
                 Parent = scroll,
             })
 
             create("UIPadding", {
                 PaddingTop = UDim.new(0, 8),
-                PaddingRight = UDim.new(0, leftSide and 2 or 0),
+                PaddingRight = UDim.new(0, leftSide and 3 or 0),
                 PaddingBottom = UDim.new(0, 5),
                 Parent = scroll,
             })
@@ -822,8 +705,6 @@ function PuckUI:CreateWindow(settings)
         tab.Columns = columns
 
         local function chooseColumn()
-            -- Place the next group box in the shorter column for a more
-            -- balanced classic multi-column layout.
             local leftLayout = columns[1]:FindFirstChildOfClass("UIListLayout")
             local rightLayout = columns[2]:FindFirstChildOfClass("UIListLayout")
             local leftHeight = leftLayout and leftLayout.AbsoluteContentSize.Y or 0
@@ -846,7 +727,8 @@ function PuckUI:CreateWindow(settings)
                 Size = UDim2.new(1, -2, 0, 24),
                 AutomaticSize = Enum.AutomaticSize.Y,
                 BackgroundColor3 = Theme.SectionInner,
-                BorderColor3 = Theme.Border,
+                BackgroundTransparency = 0.5,
+                BorderColor3 = Theme.BorderDark,
                 BorderSizePixel = 1,
                 ClipsDescendants = false,
                 ZIndex = 5,
@@ -854,33 +736,42 @@ function PuckUI:CreateWindow(settings)
             })
 
             create("UIStroke", {
-                Color = Theme.BorderDark,
+                Color = Theme.Border,
                 Thickness = 1,
-                Transparency = 0,
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
                 Parent = frame,
             })
 
-            -- Group-box title sits over the top border.
+            -- Aztup signature blue top line on the groupbox
+            local topAccentLine = create("Frame", {
+                Position = UDim2.fromOffset(0, 0),
+                Size = UDim2.new(1, 0, 0, 1),
+                BackgroundColor3 = Theme.Accent,
+                BorderSizePixel = 0,
+                ZIndex = 6,
+                Parent = frame,
+            })
+            table.insert(window.AccentObjects, topAccentLine)
+
+            local titleWidth = TextService:GetTextSize(section.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 12
+            
+            -- Patch to break the border and the blue line for the text
             local headerPatch = create("Frame", {
-                Position = UDim2.fromOffset(6, -6),
-                Size = UDim2.fromOffset(
-                    math.max(48, TextService:GetTextSize(section.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 10),
-                    15
-                ),
+                Position = UDim2.fromOffset(12, -7),
+                Size = UDim2.fromOffset(titleWidth, 14),
                 BackgroundColor3 = Theme.Main,
                 BorderSizePixel = 0,
                 ZIndex = 7,
                 Parent = frame,
             })
 
-            local header = codeLabel(headerPatch, section.Name, 12, Theme.BrightText, 8)
-            header.Position = UDim2.fromOffset(4, -1)
-            header.Size = UDim2.new(1, -8, 1, 0)
+            local header = codeLabel(headerPatch, section.Name, 12, Theme.Text, 8)
+            header.Position = UDim2.fromOffset(0, 0)
+            header.Size = UDim2.new(1, 0, 1, 0)
+            header.TextXAlignment = Enum.TextXAlignment.Center
 
             local body = create("Frame", {
                 Name = "Body",
-                Position = UDim2.fromOffset(5, 10),
+                Position = UDim2.fromOffset(6, 12),
                 Size = UDim2.new(1, -12, 0, 0),
                 AutomaticSize = Enum.AutomaticSize.Y,
                 BackgroundTransparency = 1,
@@ -892,12 +783,12 @@ function PuckUI:CreateWindow(settings)
 
             create("UIListLayout", {
                 SortOrder = Enum.SortOrder.LayoutOrder,
-                Padding = UDim.new(0, 1),
+                Padding = UDim.new(0, 3),
                 Parent = body,
             })
 
             create("UIPadding", {
-                PaddingBottom = UDim.new(0, 5),
+                PaddingBottom = UDim.new(0, 6),
                 Parent = body,
             })
 
@@ -907,6 +798,8 @@ function PuckUI:CreateWindow(settings)
             function section:Set(newName)
                 self.Name = tostring(newName or "")
                 header.Text = self.Name
+                local newWidth = TextService:GetTextSize(self.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 12
+                headerPatch.Size = UDim2.fromOffset(newWidth, 14)
             end
 
             table.insert(self.Sections, section)
@@ -927,9 +820,9 @@ function PuckUI:CreateWindow(settings)
         end
 
         function tab:CreateDivider()
-            local row = addControlFrame(7)
+            local row = addControlFrame(9)
             local divider = create("Frame", {
-                Position = UDim2.fromOffset(0, 3),
+                Position = UDim2.fromOffset(0, 4),
                 Size = UDim2.new(1, 0, 0, 1),
                 BackgroundColor3 = Theme.Border,
                 BorderSizePixel = 0,
@@ -977,11 +870,11 @@ function PuckUI:CreateWindow(settings)
 
             local row = addControlFrame(rowHeight)
 
-            local title = codeLabel(row, data.Title or "", 11, Theme.BrightText, 7)
+            local title = codeLabel(row, data.Title or "", 12, Theme.BrightText, 7)
             title.Position = UDim2.fromOffset(0, 0)
             title.Size = UDim2.new(1, 0, 0, 16)
 
-            local body = codeLabel(row, contentText, 10, Theme.DimText, 7)
+            local body = codeLabel(row, contentText, 11, Theme.DimText, 7)
             body.Position = UDim2.fromOffset(0, 16)
             body.Size = UDim2.new(1, 0, 1, -16)
             body.TextWrapped = true
@@ -1012,7 +905,7 @@ function PuckUI:CreateWindow(settings)
                 Position = UDim2.fromOffset(0, 1),
                 Size = UDim2.new(1, 0, 1, -2),
                 BackgroundColor3 = Theme.Element,
-                BorderColor3 = Theme.Border,
+                BorderColor3 = Theme.BorderDark,
                 BorderSizePixel = 1,
                 AutoButtonColor = false,
                 Font = Enum.Font.Code,
@@ -1046,7 +939,7 @@ function PuckUI:CreateWindow(settings)
         function tab:CreateToggle(data)
             data = data or {}
 
-            local row = addControlFrame(19)
+            local row = addControlFrame(18)
             local state = data.CurrentValue == true
             local flag = data.Flag
 
@@ -1061,23 +954,15 @@ function PuckUI:CreateWindow(settings)
             })
 
             local box = create("Frame", {
-                Position = UDim2.fromOffset(1, 4),
+                Position = UDim2.fromOffset(2, 3),
                 Size = UDim2.fromOffset(12, 12),
-                BackgroundColor3 = Color3.fromRGB(9, 9, 9),
-                BorderColor3 = Theme.Border,
+                BackgroundColor3 = Color3.fromRGB(15, 15, 15),
+                BorderColor3 = Theme.BorderDark,
                 BorderSizePixel = 1,
                 ZIndex = 7,
                 Parent = row,
             })
-
-            create("Frame", {
-                Position = UDim2.fromOffset(1, 1),
-                Size = UDim2.new(1, -2, 0, 1),
-                BackgroundColor3 = Color3.fromRGB(58, 58, 58),
-                BorderSizePixel = 0,
-                ZIndex = 8,
-                Parent = box,
-            })
+            create("UIStroke", { Color = Theme.Border, Thickness = 1, Parent = box })
 
             local fill = create("Frame", {
                 Position = UDim2.fromOffset(2, 2),
@@ -1090,9 +975,9 @@ function PuckUI:CreateWindow(settings)
             })
             table.insert(window.AccentObjects, fill)
 
-            local label = codeLabel(row, data.Name or data.Text or "Toggle", 11, state and Theme.Text or Theme.DimText, 7)
-            label.Position = UDim2.fromOffset(20, 0)
-            label.Size = UDim2.new(1, -20, 1, 0)
+            local label = codeLabel(row, data.Name or data.Text or "Toggle", 12, state and Theme.BrightText or Theme.DimText, 7)
+            label.Position = UDim2.fromOffset(22, 0)
+            label.Size = UDim2.new(1, -22, 1, 0)
             label.TextTruncate = Enum.TextTruncate.AtEnd
 
             local object = {}
@@ -1100,7 +985,7 @@ function PuckUI:CreateWindow(settings)
             local function apply(value, invokeCallback)
                 state = value == true
                 fill.Visible = state
-                label.TextColor3 = state and Theme.Text or Theme.DimText
+                label.TextColor3 = state and Theme.BrightText or Theme.DimText
 
                 if flag then
                     PuckUI.Flags[flag] = state
@@ -1133,8 +1018,8 @@ function PuckUI:CreateWindow(settings)
         function tab:CreateDropdown(data)
             data = data or {}
 
-            local row = addControlFrame(38)
-            local label = codeLabel(row, data.Name or "Dropdown", 11, Theme.Text, 7)
+            local row = addControlFrame(40)
+            local label = codeLabel(row, data.Name or "Dropdown", 12, Theme.Text, 7)
             label.Size = UDim2.new(1, 0, 0, 16)
 
             local options = {}
@@ -1148,10 +1033,10 @@ function PuckUI:CreateWindow(settings)
             end
 
             local selector = create("TextButton", {
-                Position = UDim2.fromOffset(0, 16),
-                Size = UDim2.new(1, 0, 0, 19),
+                Position = UDim2.fromOffset(0, 18),
+                Size = UDim2.new(1, 0, 0, 20),
                 BackgroundColor3 = Theme.Element,
-                BorderColor3 = Theme.Border,
+                BorderColor3 = Theme.BorderDark,
                 BorderSizePixel = 1,
                 AutoButtonColor = false,
                 Font = Enum.Font.Code,
@@ -1167,7 +1052,7 @@ function PuckUI:CreateWindow(settings)
             local arrow = codeLabel(selector, "v", 10, Theme.DimText, 9)
             arrow.AnchorPoint = Vector2.new(1, 0)
             arrow.Position = UDim2.new(1, -3, 0, 0)
-            arrow.Size = UDim2.fromOffset(12, 18)
+            arrow.Size = UDim2.fromOffset(12, 20)
             arrow.TextXAlignment = Enum.TextXAlignment.Center
 
             local object = {}
@@ -1248,7 +1133,7 @@ function PuckUI:CreateWindow(settings)
                 popup = create("ScrollingFrame", {
                     Position = UDim2.fromOffset(selectorPosition.X, menuY),
                     Size = UDim2.fromOffset(math.max(80, selectorSize.X), menuHeight),
-                    BackgroundColor3 = Color3.fromRGB(18, 18, 18),
+                    BackgroundColor3 = Color3.fromRGB(20, 20, 20),
                     BorderColor3 = Theme.Border,
                     BorderSizePixel = 1,
                     CanvasSize = UDim2.new(),
@@ -1343,7 +1228,8 @@ function PuckUI:CreateWindow(settings)
         function tab:CreateSlider(data)
             data = data or {}
 
-            local row = addControlFrame(35)
+            -- Sliders redesigned for Aztup format: thicker bar, value inside.
+            local row = addControlFrame(34)
             local minimum = tonumber(data.Range and data.Range[1] or data.Min) or 0
             local maximum = tonumber(data.Range and data.Range[2] or data.Max) or 100
             local increment = tonumber(data.Increment) or 1
@@ -1352,19 +1238,14 @@ function PuckUI:CreateWindow(settings)
             local value = tonumber(data.CurrentValue or data.Value) or minimum
             value = math.clamp(value, minimum, maximum)
 
-            local label = codeLabel(row, data.Name or "Slider", 11, Theme.Text, 7)
-            label.Size = UDim2.new(0.68, 0, 0, 16)
-
-            local valueLabel = codeLabel(row, tostring(value) .. suffix, 10, Theme.DimText, 7)
-            valueLabel.Position = UDim2.new(0.68, 0, 0, 0)
-            valueLabel.Size = UDim2.new(0.32, 0, 0, 16)
-            valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+            local label = codeLabel(row, data.Name or "Slider", 11, Theme.DimText, 7)
+            label.Size = UDim2.new(1, 0, 0, 14)
 
             local rail = create("Frame", {
-                Position = UDim2.fromOffset(0, 22),
-                Size = UDim2.new(1, 0, 0, 7),
-                BackgroundColor3 = Color3.fromRGB(9, 9, 9),
-                BorderColor3 = Theme.Border,
+                Position = UDim2.fromOffset(0, 18),
+                Size = UDim2.new(1, 0, 0, 14),
+                BackgroundColor3 = Theme.Element,
+                BorderColor3 = Theme.BorderDark,
                 BorderSizePixel = 1,
                 Active = true,
                 ZIndex = 7,
@@ -1380,6 +1261,11 @@ function PuckUI:CreateWindow(settings)
             })
             table.insert(window.AccentObjects, fill)
 
+            -- The value label is now placed inside the rail to mimic Aztup
+            local valueLabel = codeLabel(rail, tostring(value) .. suffix, 11, Theme.BrightText, 9)
+            valueLabel.Size = UDim2.fromScale(1, 1)
+            valueLabel.TextXAlignment = Enum.TextXAlignment.Center
+
             local draggingSlider = false
             local flag = data.Flag
             local object = {}
@@ -1393,7 +1279,6 @@ function PuckUI:CreateWindow(settings)
                 nextValue = math.clamp(nextValue, minimum, maximum)
                 nextValue = math.floor(nextValue / increment + 0.5) * increment
 
-                -- keep decimals stable for increments such as 0.05 / 0.5
                 if increment < 1 then
                     local decimals = math.max(0, math.ceil(-math.log10(increment)))
                     local factor = 10 ^ decimals
@@ -1475,10 +1360,10 @@ function PuckUI:CreateWindow(settings)
             label.Size = UDim2.new(1, 0, 0, 16)
 
             local box = create("TextBox", {
-                Position = UDim2.fromOffset(0, 16),
+                Position = UDim2.fromOffset(0, 18),
                 Size = UDim2.new(1, 0, 0, 20),
-                BackgroundColor3 = Color3.fromRGB(22, 22, 22),
-                BorderColor3 = Theme.Border,
+                BackgroundColor3 = Theme.Element,
+                BorderColor3 = Theme.BorderDark,
                 BorderSizePixel = 1,
                 ClearTextOnFocus = false,
                 Font = Enum.Font.Code,
@@ -1486,15 +1371,15 @@ function PuckUI:CreateWindow(settings)
                 PlaceholderText = tostring(data.PlaceholderText or ""),
                 TextColor3 = Theme.Text,
                 PlaceholderColor3 = Theme.DimText,
-                TextSize = 10,
+                TextSize = 11,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 ZIndex = 8,
                 Parent = row,
             })
 
             create("UIPadding", {
-                PaddingLeft = UDim.new(0, 5),
-                PaddingRight = UDim.new(0, 5),
+                PaddingLeft = UDim.new(0, 6),
+                PaddingRight = UDim.new(0, 6),
                 Parent = box,
             })
 
@@ -1544,139 +1429,11 @@ function PuckUI:CreateWindow(settings)
             return object
         end
 
-        function tab:CreateKeybind(data)
-            data = data or {}
-
-            local row = addControlFrame(40)
-
-            local label = codeLabel(row, data.Name or "Keybind", 12, Theme.Text, 7)
-            label.Size = UDim2.new(1, 0, 0, 16)
-
-            local bindButton = create("TextButton", {
-                Position = UDim2.fromOffset(0, 16),
-                Size = UDim2.new(1, 0, 0, 21),
-                BackgroundColor3 = Theme.Element,
-                BorderColor3 = Theme.Border,
-                BorderSizePixel = 1,
-                AutoButtonColor = false,
-                Font = Enum.Font.Code,
-                Text = "",
-                TextColor3 = Theme.Text,
-                TextSize = 11,
-                ZIndex = 8,
-                Parent = row,
-            })
-            setHover(bindButton, Theme.Element, Theme.ElementHover)
-
-            create("Frame", {
-                Position = UDim2.fromOffset(1, 1),
-                Size = UDim2.new(1, -2, 0, 1),
-                BackgroundColor3 = Color3.fromRGB(55, 55, 55),
-                BorderSizePixel = 0,
-                ZIndex = 9,
-                Parent = bindButton,
-            })
-
-            local object = {
-                Button = bindButton,
-                Callback = data.Callback,
-                CurrentKey = window.ToggleKeyName,
-                Capturing = false,
-            }
-
-            function object:_SetKeyName(keyName)
-                self.CurrentKey = tostring(keyName or "K")
-                self.Capturing = false
-                bindButton.Text = "[ " .. self.CurrentKey .. " ]"
-                bindButton.TextColor3 = Theme.Text
-            end
-
-            function object:Set(value)
-                local previous = window.ToggleKeyName
-                if window:SetToggleKey(value) then
-                    self:_SetKeyName(window.ToggleKeyName)
-                    if previous ~= window.ToggleKeyName then
-                        safeCallback(self.Callback, window.ToggleKeyName)
-                    end
-                    return true
-                end
-                return false
-            end
-
-            function object:Get()
-                return window.ToggleKeyName
-            end
-
-            function object:CancelCapture()
-                if SharedUIState.CapturingControl == self then
-                    SharedUIState.CapturingControl = nil
-                    SharedUIState.CapturingWindow = nil
-                end
-                self:_SetKeyName(window.ToggleKeyName)
-            end
-
-            bindButton.MouseButton1Click:Connect(function()
-                -- Cancel any previous key capture from another PuckAFK window.
-                local previousControl = SharedUIState.CapturingControl
-                if previousControl and previousControl ~= object and previousControl.CancelCapture then
-                    previousControl:CancelCapture()
-                end
-
-                window:ClosePopup()
-                SharedUIState.CapturingWindow = window
-                SharedUIState.CapturingControl = object
-                object.Capturing = true
-                bindButton.Text = "[ press a key... ]"
-                bindButton.TextColor3 = Theme.Accent
-            end)
-
-            object:_SetKeyName(window.ToggleKeyName)
-            table.insert(window.KeybindDisplays, object)
-
-            return object
-        end
-
-        button.MouseEnter:Connect(function()
-            if window.CurrentTab ~= tab then
-                tween(button, 0.08, {BackgroundColor3 = Color3.fromRGB(22, 22, 22)})
-            end
-        end)
-
-        button.MouseLeave:Connect(function()
-            if window.CurrentTab ~= tab then
-                tween(button, 0.08, {BackgroundColor3 = Theme.Tab})
-            end
-        end)
-
         button.MouseButton1Click:Connect(function()
             window:SelectTab(tab)
         end)
 
         table.insert(self.Tabs, tab)
-
-        -- Every PuckAFK script that has a Settings tab automatically gets
-        -- the same built-in UI keybind option. Future scripts do not need
-        -- to manually implement this control.
-        if string.lower(tab.Name) == "settings"
-            and settings.DisableBuiltInUIKeybind ~= true then
-
-            tab:CreateSection("Interface")
-
-            tab:CreateKeybind({
-                Name = "Hide / Show UI Key",
-                Callback = function(keyName)
-                    PuckUI:Notify({
-                        Title = "UI Keybind",
-                        Content = "All PuckAFK UIs now use " .. tostring(keyName),
-                        Duration = 2.5,
-                    })
-                end,
-            })
-
-            tab:CreateLabel(
-                "Click the key box, then press any keyboard key. Escape cancels."
-            )
-        end
 
         if #self.Tabs == 1 then
             task.defer(function()
@@ -1716,64 +1473,14 @@ function PuckUI:CreateWindow(settings)
         end
     end)
 
-    -- Dynamic UI key capture + hide/show handling.
+    local keyName = tostring(window.ToggleKey or "K")
+    local keyCode = Enum.KeyCode[keyName] or Enum.KeyCode.K
+
     UserInputService.InputBegan:Connect(function(input, processed)
-        local capturingWindow = SharedUIState.CapturingWindow
-
-        if capturingWindow then
-            -- Every PuckUI copy receives InputBegan. Only the window that
-            -- owns the active capture is allowed to consume this key.
-            if capturingWindow ~= window then
-                return
-            end
-
-            if input.UserInputType ~= Enum.UserInputType.Keyboard then
-                return
-            end
-
-            local control = SharedUIState.CapturingControl
-
-            if input.KeyCode == Enum.KeyCode.Escape then
-                SharedUIState.SuppressToggleUntil = os.clock() + 0.25
-                SharedUIState.CapturingWindow = nil
-                SharedUIState.CapturingControl = nil
-                if control and control.CancelCapture then
-                    control:CancelCapture()
-                end
-                return
-            end
-
-            if input.KeyCode ~= Enum.KeyCode.Unknown then
-                local keyName = input.KeyCode.Name
-
-                -- Keep suppression active briefly so another PuckUI's
-                -- InputBegan callback cannot treat this same keypress as
-                -- the newly assigned hide/show shortcut.
-                SharedUIState.SuppressToggleUntil = os.clock() + 0.30
-                SharedUIState.CapturingWindow = nil
-                SharedUIState.CapturingControl = nil
-
-                window:SetToggleKey(input.KeyCode)
-
-                if control then
-                    control:_SetKeyName(keyName)
-                    safeCallback(control.Callback, keyName)
-                end
-            end
-
-            return
-        end
-
-        if os.clock() < (SharedUIState.SuppressToggleUntil or 0) then
-            return
-        end
-
         if processed then
             return
         end
-
-        if input.UserInputType == Enum.UserInputType.Keyboard
-            and input.KeyCode == window.ToggleKeyCode then
+        if input.KeyCode == keyCode then
             window:Toggle()
         end
     end)
