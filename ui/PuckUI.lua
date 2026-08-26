@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.2 - Combined Edition / Layout Fix
+    PuckUI v3.3 - Rose Refined / Global Settings Keybind
     Shared PuckAFK game-script UI.
 
     Combined from both supplied PuckUI variants:
@@ -19,7 +19,7 @@ local TextService = game:GetService("TextService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.2.4",
+    Version = "3.3.0",
     Flags = {},
     Window = nil,
 }
@@ -46,6 +46,36 @@ local Theme = {
 }
 
 PuckUI.Theme = Theme
+
+-- One keybind state shared by every PuckAFK UI loaded in this Roblox session.
+-- Changing it from any script's Settings tab immediately updates every other
+-- currently-loaded PuckUI window as well.
+local function getSharedEnvironment()
+    if type(getgenv) == "function" then
+        local ok, env = pcall(getgenv)
+        if ok and type(env) == "table" then
+            return env
+        end
+    end
+
+    return _G
+end
+
+local SharedEnvironment = getSharedEnvironment()
+SharedEnvironment.__PUCKAFK_UI_SHARED_STATE =
+    SharedEnvironment.__PUCKAFK_UI_SHARED_STATE
+    or {
+        ToggleKeyName = "K",
+        Windows = setmetatable({}, {__mode = "k"}),
+        CapturingWindow = nil,
+        CapturingControl = nil,
+        SuppressToggleUntil = 0,
+    }
+
+local SharedUIState = SharedEnvironment.__PUCKAFK_UI_SHARED_STATE
+SharedUIState.ToggleKeyName = SharedUIState.ToggleKeyName or "K"
+SharedUIState.Windows = SharedUIState.Windows or setmetatable({}, {__mode = "k"})
+SharedUIState.SuppressToggleUntil = SharedUIState.SuppressToggleUntil or 0
 
 local function create(className, properties)
     local object = Instance.new(className)
@@ -644,10 +674,13 @@ function PuckUI:CreateWindow(settings)
         CloseCallback = nil,
         Minimized = false,
         FullSize = UDim2.fromOffset(width, height),
-        ToggleKey = settings.ToggleUIKeybind or settings.ToggleKeybind or "K",
+        ToggleKeyName = tostring(SharedUIState.ToggleKeyName or "K"),
+        ToggleKeyCode = Enum.KeyCode.K,
+        KeybindDisplays = {},
     }
 
     self.Window = window
+    SharedUIState.Windows[window] = true
 
     ------------------------------------------------------------------------
     -- Reliable dragging
@@ -746,8 +779,69 @@ function PuckUI:CreateWindow(settings)
         self:SetVisible(not self.Main.Visible)
     end
 
+    function window:_ApplyToggleKey(key)
+        local keyCode
+
+        if typeof(key) == "EnumItem" and key.EnumType == Enum.KeyCode then
+            keyCode = key
+        else
+            keyCode = Enum.KeyCode[tostring(key or "")]
+        end
+
+        if not keyCode or keyCode == Enum.KeyCode.Unknown then
+            return false
+        end
+
+        self.ToggleKeyCode = keyCode
+        self.ToggleKeyName = keyCode.Name
+
+        for _, control in ipairs(self.KeybindDisplays or {}) do
+            if control and control._SetKeyName then
+                control:_SetKeyName(self.ToggleKeyName)
+            end
+        end
+
+        return true
+    end
+
+    function window:SetToggleKey(key)
+        local keyCode
+
+        if typeof(key) == "EnumItem" and key.EnumType == Enum.KeyCode then
+            keyCode = key
+        else
+            keyCode = Enum.KeyCode[tostring(key or "")]
+        end
+
+        if not keyCode or keyCode == Enum.KeyCode.Unknown then
+            return false
+        end
+
+        SharedUIState.ToggleKeyName = keyCode.Name
+
+        -- Broadcast the new key to every PuckAFK window currently loaded.
+        for otherWindow in pairs(SharedUIState.Windows) do
+            if otherWindow and otherWindow._ApplyToggleKey then
+                otherWindow:_ApplyToggleKey(keyCode)
+            end
+        end
+
+        return true
+    end
+
+    function window:GetToggleKey()
+        return self.ToggleKeyName
+    end
+
     function window:Destroy()
         self:ClosePopup()
+        SharedUIState.Windows[self] = nil
+
+        if SharedUIState.CapturingWindow == self then
+            SharedUIState.CapturingWindow = nil
+            SharedUIState.CapturingControl = nil
+        end
+
         if self.ScreenGui then
             self.ScreenGui:Destroy()
         end
@@ -788,6 +882,11 @@ function PuckUI:CreateWindow(settings)
                 )
             end
         end)
+    end
+
+    -- Resolve this window to the current shared UI key.
+    if not window:_ApplyToggleKey(SharedUIState.ToggleKeyName) then
+        window:_ApplyToggleKey("K")
     end
 
     ------------------------------------------------------------------------
@@ -1152,6 +1251,30 @@ function PuckUI:CreateWindow(settings)
 
         function tab:CreateButton(data)
             data = data or {}
+
+            -- Legacy scripts used dedicated Hide UI buttons. The UI keybind in
+            -- Settings replaces them, so suppress those buttons automatically.
+            local requestedName = tostring(data.Name or data.Text or "Button")
+            local normalizedName = string.lower(requestedName)
+            normalizedName = normalizedName:gsub("%s+", " ")
+
+            local legacyUIButtons = {
+                ["hide ui"] = true,
+                ["toggle ui"] = true,
+                ["hide/show ui"] = true,
+                ["show/hide ui"] = true,
+                ["hide / show ui"] = true,
+                ["show / hide ui"] = true,
+            }
+
+            if legacyUIButtons[normalizedName] then
+                local hiddenObject = {}
+                function hiddenObject:Set(_value) end
+                function hiddenObject:SetText(_value) end
+                function hiddenObject:Get() return false end
+                return hiddenObject
+            end
+
             local row = addControlFrame(24)
 
             local buttonControl = create("TextButton", {
@@ -1682,11 +1805,113 @@ function PuckUI:CreateWindow(settings)
             return object
         end
 
+        function tab:CreateKeybind(data)
+            data = data or {}
+
+            local row = addControlFrame(40)
+
+            local label = codeLabel(row, data.Name or "UI Toggle Keybind", 11, Theme.Text, 7)
+            label.Size = UDim2.new(1, 0, 0, 16)
+
+            local bindButton = create("TextButton", {
+                Position = UDim2.fromOffset(0, 18),
+                Size = UDim2.new(1, 0, 0, 20),
+                BackgroundColor3 = Theme.Element,
+                BorderColor3 = Theme.BorderDark,
+                BorderSizePixel = 1,
+                AutoButtonColor = false,
+                Font = Enum.Font.Code,
+                Text = "",
+                TextColor3 = Theme.Text,
+                TextSize = 11,
+                ZIndex = 8,
+                Parent = row,
+            })
+            create("UIStroke", {Color = Theme.Border, Thickness = 1, Parent = bindButton})
+            setHover(bindButton, Theme.Element, Theme.ElementHover)
+
+            local object = {
+                Button = bindButton,
+                Callback = data.Callback,
+                CurrentKey = window.ToggleKeyName,
+                Capturing = false,
+            }
+
+            function object:_SetKeyName(keyName)
+                self.CurrentKey = tostring(keyName or "K")
+                self.Capturing = false
+                bindButton.Text = "[ " .. self.CurrentKey .. " ]"
+                bindButton.TextColor3 = Theme.Text
+            end
+
+            function object:Set(value)
+                local previous = window.ToggleKeyName
+                if window:SetToggleKey(value) then
+                    self:_SetKeyName(window.ToggleKeyName)
+                    if previous ~= window.ToggleKeyName then
+                        safeCallback(self.Callback, window.ToggleKeyName)
+                    end
+                    return true
+                end
+                return false
+            end
+
+            function object:Get()
+                return window.ToggleKeyName
+            end
+
+            function object:CancelCapture()
+                if SharedUIState.CapturingControl == self then
+                    SharedUIState.CapturingControl = nil
+                    SharedUIState.CapturingWindow = nil
+                end
+                self:_SetKeyName(window.ToggleKeyName)
+            end
+
+            bindButton.MouseButton1Click:Connect(function()
+                local previousControl = SharedUIState.CapturingControl
+                if previousControl and previousControl ~= object and previousControl.CancelCapture then
+                    previousControl:CancelCapture()
+                end
+
+                window:ClosePopup()
+                SharedUIState.CapturingWindow = window
+                SharedUIState.CapturingControl = object
+                object.Capturing = true
+                bindButton.Text = "[ press a key... ]"
+                bindButton.TextColor3 = Theme.Accent
+            end)
+
+            object:_SetKeyName(window.ToggleKeyName)
+            table.insert(window.KeybindDisplays, object)
+
+            return object
+        end
+
         button.MouseButton1Click:Connect(function()
             window:SelectTab(tab)
         end)
 
         table.insert(self.Tabs, tab)
+
+        -- Every current and future PuckAFK script gets the UI keybind in its
+        -- Settings tab automatically. No per-game Hide UI button is needed.
+        if string.lower(tab.Name) == "settings"
+            and settings.DisableBuiltInUIKeybind ~= true then
+
+            tab:CreateSection("Interface")
+            tab:CreateKeybind({
+                Name = "UI Toggle Keybind",
+                Callback = function(keyName)
+                    PuckUI:Notify({
+                        Title = "UI Keybind",
+                        Content = "All PuckAFK UIs now use " .. tostring(keyName),
+                        Duration = 2.5,
+                    })
+                end,
+            })
+            tab:CreateLabel("Click the box, then press any key. Escape cancels.")
+        end
 
         if #self.Tabs == 1 then
             task.defer(function()
@@ -1727,14 +1952,63 @@ function PuckUI:CreateWindow(settings)
         end
     end)
 
-    local keyName = tostring(window.ToggleKey or "K")
-    local keyCode = Enum.KeyCode[keyName] or Enum.KeyCode.K
-
+    -- Dynamic key capture + hide/show handling.
     UserInputService.InputBegan:Connect(function(input, processed)
+        local capturingWindow = SharedUIState.CapturingWindow
+
+        if capturingWindow then
+            -- Only the window that owns the active capture consumes the key.
+            if capturingWindow ~= window then
+                return
+            end
+
+            if input.UserInputType ~= Enum.UserInputType.Keyboard then
+                return
+            end
+
+            local control = SharedUIState.CapturingControl
+
+            if input.KeyCode == Enum.KeyCode.Escape then
+                SharedUIState.SuppressToggleUntil = os.clock() + 0.25
+                SharedUIState.CapturingWindow = nil
+                SharedUIState.CapturingControl = nil
+
+                if control and control.CancelCapture then
+                    control:CancelCapture()
+                end
+                return
+            end
+
+            if input.KeyCode ~= Enum.KeyCode.Unknown then
+                local keyName = input.KeyCode.Name
+
+                -- Prevent this same keypress being treated as the newly-set
+                -- hide/show shortcut by another loaded PuckUI callback.
+                SharedUIState.SuppressToggleUntil = os.clock() + 0.30
+                SharedUIState.CapturingWindow = nil
+                SharedUIState.CapturingControl = nil
+
+                window:SetToggleKey(input.KeyCode)
+
+                if control then
+                    control:_SetKeyName(keyName)
+                    safeCallback(control.Callback, keyName)
+                end
+            end
+
+            return
+        end
+
+        if os.clock() < (SharedUIState.SuppressToggleUntil or 0) then
+            return
+        end
+
         if processed then
             return
         end
-        if input.KeyCode == keyCode then
+
+        if input.UserInputType == Enum.UserInputType.Keyboard
+            and input.KeyCode == window.ToggleKeyCode then
             window:Toggle()
         end
     end)
