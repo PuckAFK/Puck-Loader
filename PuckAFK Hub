@@ -5,7 +5,7 @@
       Get Rich ASAP : 128481067661991
       Chicken Farm  : 137233438285284
 
-    Compact loader UI with automatic PlaceId detection, manual dropdown, and cross-game preview mode.
+    Compact loader UI with automatic PlaceId detection and a manual script dropdown.
 ]]
 
 local Players = game:GetService("Players")
@@ -14,13 +14,11 @@ local TweenService = game:GetService("TweenService")
 
 local ROUTES = {
     [128481067661991] = {
-        placeId = 128481067661991,
         name = "Get Rich ASAP",
         source = "github.com/PuckAFK/Get-rich-asap",
         url = "https://raw.githubusercontent.com/PuckAFK/Get-rich-asap/main/Get%20Rich%20Asap%20Script",
     },
     [137233438285284] = {
-        placeId = 137233438285284,
         name = "Chicken Farm",
         source = "github.com/PuckAFK/Chicken-Farm-Auto",
         url = "https://raw.githubusercontent.com/PuckAFK/Chicken-Farm-Auto/main/Chicken%20Empire",
@@ -452,6 +450,15 @@ local function chooseRouteManually(placeId)
     end)
 
     for index, option in ipairs(manualRoutes) do
+        -- IMPORTANT: bind a fresh route table for this specific button.
+        -- This prevents loop-closure capture from causing multiple dropdown
+        -- entries to launch the same final route.
+        local routeOption = {
+            name = option.name,
+            source = option.source,
+            url = option.url,
+        }
+
         local item = Instance.new("TextButton")
         item.Name = "Option" .. tostring(index)
         item.LayoutOrder = index
@@ -461,7 +468,7 @@ local function chooseRouteManually(placeId)
         item.BorderSizePixel = 0
         item.AutoButtonColor = false
         item.Font = Enum.Font.GothamMedium
-        item.Text = "  " .. option.name
+        item.Text = "  " .. routeOption.name
         item.TextColor3 = THEME.text
         item.TextSize = 11
         item.TextXAlignment = Enum.TextXAlignment.Left
@@ -491,10 +498,17 @@ local function chooseRouteManually(placeId)
         item.MouseButton1Click:Connect(function()
             if busy then return end
             busy = true
-            selectedRoute = option
 
-            selector.Text = "  " .. option.name
-            setStatus("Script Selected", option.name)
+            -- Copy the exact route selected by THIS button. Do not store the
+            -- loop variable itself and do not re-detect by PlaceId afterward.
+            selectedRoute = {
+                name = routeOption.name,
+                source = routeOption.source,
+                url = routeOption.url,
+            }
+
+            selector.Text = "  " .. selectedRoute.name
+            setStatus("Script Selected", selectedRoute.name)
 
             tween(item, 0.14, {
                 BackgroundColor3 = Color3.fromRGB(45, 70, 50),
@@ -554,332 +568,6 @@ end
 
 
 -- =========================
--- Cross-game compatibility / preview mode
--- =========================
-
-local function launchCompatibilityPreview(route, currentPlaceId)
-    local previewGui = Instance.new("ScreenGui")
-    previewGui.Name = "PuckAFKCompatibilityPreview"
-    previewGui.ResetOnSpawn = false
-    previewGui.IgnoreGuiInset = true
-    previewGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-    local previewParent = getGuiParent(previewGui)
-    if previewParent then
-        previewGui.Parent = previewParent
-    end
-
-    local panel = Instance.new("CanvasGroup")
-    panel.AnchorPoint = Vector2.new(0.5, 0.5)
-    panel.Position = UDim2.fromScale(0.5, 0.5)
-    panel.Size = UDim2.fromOffset(420, 520)
-    panel.BackgroundColor3 = THEME.panel
-    panel.BackgroundTransparency = 0.04
-    panel.BorderSizePixel = 0
-    panel.GroupTransparency = 1
-    panel.Parent = previewGui
-
-    local panelCorner = Instance.new("UICorner")
-    panelCorner.CornerRadius = UDim.new(0, 16)
-    panelCorner.Parent = panel
-
-    local panelStroke = Instance.new("UIStroke")
-    panelStroke.Color = THEME.stroke
-    panelStroke.Thickness = 1
-    panelStroke.Transparency = 0.30
-    panelStroke.Parent = panel
-
-    local header = Instance.new("Frame")
-    header.BackgroundTransparency = 1
-    header.Size = UDim2.new(1, 0, 0, 74)
-    header.Parent = panel
-
-    local previewTitle = Instance.new("TextLabel")
-    previewTitle.BackgroundTransparency = 1
-    previewTitle.Position = UDim2.fromOffset(18, 13)
-    previewTitle.Size = UDim2.new(1, -70, 0, 25)
-    previewTitle.Font = Enum.Font.GothamBold
-    previewTitle.Text = route.name
-    previewTitle.TextColor3 = THEME.text
-    previewTitle.TextSize = 18
-    previewTitle.TextXAlignment = Enum.TextXAlignment.Left
-    previewTitle.Parent = header
-
-    local previewSubtitle = Instance.new("TextLabel")
-    previewSubtitle.BackgroundTransparency = 1
-    previewSubtitle.Position = UDim2.fromOffset(18, 39)
-    previewSubtitle.Size = UDim2.new(1, -70, 0, 18)
-    previewSubtitle.Font = Enum.Font.GothamMedium
-    previewSubtitle.Text = "COMPATIBILITY / PREVIEW MODE"
-    previewSubtitle.TextColor3 = Color3.fromRGB(237, 190, 93)
-    previewSubtitle.TextSize = 10
-    previewSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-    previewSubtitle.Parent = header
-
-    local close = Instance.new("TextButton")
-    close.AnchorPoint = Vector2.new(1, 0)
-    close.Position = UDim2.new(1, -14, 0, 14)
-    close.Size = UDim2.fromOffset(32, 32)
-    close.BackgroundColor3 = Color3.fromRGB(35, 41, 36)
-    close.BorderSizePixel = 0
-    close.AutoButtonColor = false
-    close.Font = Enum.Font.GothamBold
-    close.Text = "×"
-    close.TextColor3 = THEME.text
-    close.TextSize = 18
-    close.Parent = header
-    Instance.new("UICorner", close).CornerRadius = UDim.new(0, 8)
-
-    local info = Instance.new("TextLabel")
-    info.BackgroundColor3 = Color3.fromRGB(25, 30, 26)
-    info.BackgroundTransparency = 0.04
-    info.Position = UDim2.fromOffset(14, 76)
-    info.Size = UDim2.new(1, -28, 0, 72)
-    info.BorderSizePixel = 0
-    info.Font = Enum.Font.Code
-    info.TextColor3 = Color3.fromRGB(206, 214, 208)
-    info.TextSize = 11
-    info.TextWrapped = true
-    info.TextXAlignment = Enum.TextXAlignment.Left
-    info.TextYAlignment = Enum.TextYAlignment.Center
-    info.Text = "  Preview backend active\n  Current PlaceId: " .. tostring(currentPlaceId)
-        .. "\n  Real backend PlaceId: " .. tostring(route.placeId)
-    info.Parent = panel
-    Instance.new("UICorner", info).CornerRadius = UDim.new(0, 10)
-
-    local controls = Instance.new("ScrollingFrame")
-    controls.BackgroundTransparency = 1
-    controls.BorderSizePixel = 0
-    controls.Position = UDim2.fromOffset(14, 158)
-    controls.Size = UDim2.new(1, -28, 1, -226)
-    controls.CanvasSize = UDim2.fromOffset(0, 0)
-    controls.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    controls.ScrollBarThickness = 3
-    controls.ScrollBarImageColor3 = THEME.stroke
-    controls.Parent = panel
-
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0, 6)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Parent = controls
-
-    local previewState = {}
-    local rows = {}
-
-    local chickenFeatures = {
-        "Auto Collect Eggs",
-        "Auto Collect Cash",
-        "Auto Deposit Eggs",
-        "Auto Buy Chickens",
-        "Auto Merge Chickens",
-        "Auto Processing Upgrade",
-        "Auto Buy-Tier Upgrade",
-        "Auto Gem Upgrades",
-        "Auto Lucky Blocks",
-        "Smart Spending",
-        "Global Event Optimizer",
-        "Smart Rebirth Planner",
-        "Auto Rebirth",
-    }
-
-    local getRichFeatures = {
-        "Auto Farm Money",
-        "Auto Collect",
-        "Auto Buy",
-        "Auto Upgrade",
-        "Auto Sell",
-        "Auto Rewards",
-        "Smart Spending",
-        "Fast Progression",
-        "Auto Rebirth",
-    }
-
-    local featureList = route.placeId == 137233438285284 and chickenFeatures or getRichFeatures
-
-    local function refreshRow(name)
-        local row = rows[name]
-        if not row then return end
-        local on = previewState[name] == true
-        row.Text = (on and "  ON   " or "  OFF  ") .. name
-        row.BackgroundColor3 = on and Color3.fromRGB(45, 70, 50) or Color3.fromRGB(31, 37, 32)
-    end
-
-    for index, featureName in ipairs(featureList) do
-        previewState[featureName] = false
-
-        local row = Instance.new("TextButton")
-        row.LayoutOrder = index
-        row.Size = UDim2.new(1, -3, 0, 32)
-        row.BackgroundColor3 = Color3.fromRGB(31, 37, 32)
-        row.BorderSizePixel = 0
-        row.AutoButtonColor = false
-        row.Font = Enum.Font.GothamMedium
-        row.TextColor3 = THEME.text
-        row.TextSize = 11
-        row.TextXAlignment = Enum.TextXAlignment.Left
-        row.Parent = controls
-        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-
-        rows[featureName] = row
-        refreshRow(featureName)
-
-        row.MouseButton1Click:Connect(function()
-            previewState[featureName] = not previewState[featureName]
-            refreshRow(featureName)
-        end)
-    end
-
-    local bottom = Instance.new("Frame")
-    bottom.BackgroundTransparency = 1
-    bottom.Position = UDim2.new(0, 14, 1, -58)
-    bottom.Size = UDim2.new(1, -28, 0, 44)
-    bottom.Parent = panel
-
-    local maxButton = Instance.new("TextButton")
-    maxButton.Size = UDim2.new(0.5, -4, 1, 0)
-    maxButton.BackgroundColor3 = Color3.fromRGB(45, 70, 50)
-    maxButton.BorderSizePixel = 0
-    maxButton.AutoButtonColor = false
-    maxButton.Font = Enum.Font.GothamBold
-    maxButton.Text = "MAX PREVIEW"
-    maxButton.TextColor3 = THEME.text
-    maxButton.TextSize = 11
-    maxButton.Parent = bottom
-    Instance.new("UICorner", maxButton).CornerRadius = UDim.new(0, 9)
-
-    local resetButton = Instance.new("TextButton")
-    resetButton.Position = UDim2.new(0.5, 4, 0, 0)
-    resetButton.Size = UDim2.new(0.5, -4, 1, 0)
-    resetButton.BackgroundColor3 = Color3.fromRGB(62, 44, 45)
-    resetButton.BorderSizePixel = 0
-    resetButton.AutoButtonColor = false
-    resetButton.Font = Enum.Font.GothamBold
-    resetButton.Text = "RESET"
-    resetButton.TextColor3 = THEME.text
-    resetButton.TextSize = 11
-    resetButton.Parent = bottom
-    Instance.new("UICorner", resetButton).CornerRadius = UDim.new(0, 9)
-
-    maxButton.MouseButton1Click:Connect(function()
-        for _, featureName in ipairs(featureList) do
-            -- Keep reset/progression actions opt-in in preview too.
-            if featureName ~= "Auto Rebirth" then
-                previewState[featureName] = true
-                refreshRow(featureName)
-            end
-        end
-    end)
-
-    resetButton.MouseButton1Click:Connect(function()
-        for _, featureName in ipairs(featureList) do
-            previewState[featureName] = false
-            refreshRow(featureName)
-        end
-    end)
-
-    close.MouseButton1Click:Connect(function()
-        local fade = tween(panel, 0.20, {
-            GroupTransparency = 1,
-            Size = UDim2.fromOffset(405, 495),
-        }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-
-        fade.Completed:Wait()
-        pcall(function()
-            previewGui:Destroy()
-        end)
-    end)
-
-    -- Lightweight simulated stats so controls visibly "work" outside the game.
-    task.spawn(function()
-        local fakeCash = 0
-        local fakeEggs = 0
-        local fakeProgress = 0
-
-        while previewGui.Parent do
-            local multiplier = 1
-            local active = 0
-
-            for _, enabled in pairs(previewState) do
-                if enabled then
-                    active += 1
-                end
-            end
-
-            multiplier += active * 0.18
-            fakeCash += math.floor(120 * multiplier)
-            fakeProgress += math.max(active, 1)
-
-            if route.placeId == 137233438285284 then
-                if previewState["Auto Collect Eggs"] then
-                    fakeEggs += math.max(1, math.floor(2 * multiplier))
-                end
-
-                info.Text = string.format(
-                    "  PREVIEW ONLY • no real server data is changed\n  Cash: $%d   Eggs: %d   Active systems: %d\n  Current PlaceId: %s",
-                    fakeCash,
-                    fakeEggs,
-                    active,
-                    tostring(currentPlaceId)
-                )
-            else
-                info.Text = string.format(
-                    "  PREVIEW ONLY • no real server data is changed\n  Simulated money: $%d   Progress: %d   Active systems: %d\n  Current PlaceId: %s",
-                    fakeCash,
-                    fakeProgress,
-                    active,
-                    tostring(currentPlaceId)
-                )
-            end
-
-            task.wait(0.5)
-        end
-    end)
-
-    -- Simple dragging.
-    local dragging = false
-    local dragStart
-    local startPosition
-
-    header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPosition = panel.Position
-        end
-    end)
-
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if dragging and (
-            input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch
-        ) then
-            local delta = input.Position - dragStart
-            panel.Position = UDim2.new(
-                startPosition.X.Scale,
-                startPosition.X.Offset + delta.X,
-                startPosition.Y.Scale,
-                startPosition.Y.Offset + delta.Y
-            )
-        end
-    end)
-
-    game:GetService("UserInputService").InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-
-    tween(panel, 0.34, {
-        GroupTransparency = 0,
-        Size = UDim2.fromOffset(420, 520),
-    }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-
-    return previewGui
-end
-
--- =========================
 -- Loader sequence
 -- =========================
 
@@ -914,7 +602,6 @@ task.spawn(function()
 
     local placeId = game.PlaceId
     local route = ROUTES[placeId]
-    local manualSelection = false
 
     setStatus("Finding Script...", "PlaceId: " .. tostring(placeId))
     setProgress(0.30)
@@ -922,7 +609,6 @@ task.spawn(function()
 
     if not route then
         route = chooseRouteManually(placeId)
-        manualSelection = route ~= nil
 
         if not route then
             fail("No Script Selected", "Manual script selection was closed")
@@ -930,32 +616,15 @@ task.spawn(function()
         end
     end
 
-    setStatus("Game Found", route.name)
+    -- Automatic detection and manual selection intentionally converge here.
+    -- Whatever the user selected is the exact GitHub script that gets fetched,
+    -- compiled, and executed. No preview/fake substitute is used.
+    setStatus("Script Selected", route.name)
     setProgress(0.42)
     task.wait(0.18)
 
-    -- If the user manually picked a script for another game, use a safe
-    -- compatibility/preview backend. Real game remotes do not exist here.
-    if manualSelection and placeId ~= route.placeId then
-        setStatus("Compatibility Mode", route.name .. " • preview backend")
-        setProgress(1)
-        task.wait(0.45)
-
-        launchCompatibilityPreview(route, placeId)
-
-        local fade = tween(card, 0.34, {
-            GroupTransparency = 1,
-            Size = UDim2.fromOffset(340, 160),
-        }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-
-        fade.Completed:Wait()
-        pcall(function()
-            gui:Destroy()
-        end)
-        return
-    end
-
     setStatus("Connecting to GitHub...", route.source)
+    detail.Text = route.name .. " • " .. route.source
     setProgress(0.52)
 
     local downloadOk, source = fetchSource(route.url)
