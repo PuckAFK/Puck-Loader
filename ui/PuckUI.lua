@@ -284,198 +284,181 @@ function PuckUI:CreateWindow(settings)
         Parent = screen,
     })
 
-    local roseBackground = create("Frame", { 
-        Name = "RoseBackground", 
-        Size = UDim2.fromScale(1, 1), 
-        BackgroundTransparency = 1, 
-        BorderSizePixel = 0, 
-        ClipsDescendants = true, 
-        ZIndex = 3, 
+    -- Refined procedural rose / damask background.
+    -- The whole pattern is faded as one group so overlapping petals never
+    -- become harsh white blobs.
+    local roseBackground = create("CanvasGroup", {
+        Name = "RoseBackground",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        GroupTransparency = 0.68,
+        ZIndex = 3,
         Parent = main,
-    }) 
-     
-    -- Monochromatic color fits best for clean, non-distracting UI patterns 
-    local themeColor = Color3.fromRGB(255, 255, 255) 
-     
-    -- Helper: Creates a soft petal using UIGradient for a realistic 3D depth fade 
-    local function createPetal(parent, position, size, rotation, transparencyBase, transparencyEdge) 
-        local petal = create("Frame", { 
-            AnchorPoint = Vector2.new(0.5, 1), -- Pivot precisely at the bottom center 
-            Position = position, 
-            Size = size, 
-            Rotation = rotation, 
-            BackgroundColor3 = themeColor, 
-            BorderSizePixel = 0, 
-            ZIndex = 3, 
-            Parent = parent, 
-        }) 
-     
-        create("UICorner", { 
-            CornerRadius = UDim.new(0.5, 0), -- Ellipse/Pill shape 
-            Parent = petal, 
-        }) 
-     
-        create("UIGradient", { 
-            Rotation = 90, -- Fades out from the outer edge to the inner core 
-            Transparency = NumberSequence.new({ 
-                NumberSequenceKeypoint.new(0, transparencyEdge), 
-                NumberSequenceKeypoint.new(1, transparencyBase) 
-            }), 
-            Parent = petal 
-        }) 
-     
-        return petal 
-    end 
-     
-    local function roundedPart(parent, position, anchor, size, rotation, transparency) 
-        local part = create("Frame", { 
-            AnchorPoint = anchor, 
-            Position = position, 
-            Size = size, 
-            Rotation = rotation or 0, 
-            BackgroundColor3 = themeColor, 
-            BackgroundTransparency = transparency, 
-            BorderSizePixel = 0, 
-            ZIndex = 3, 
-            Parent = parent, 
-        }) 
-     
-        create("UICorner", { 
-            CornerRadius = UDim.new(1, 0), 
-            Parent = part, 
-        }) 
-     
-        return part 
-    end 
-     
-    local function createRose(x, y, scale, rotationOffset) 
-        local motif = create("Frame", { 
-            Name = "RoseMotif", 
-            Position = UDim2.fromOffset(x, y), 
-            Size = UDim2.fromOffset(math.floor(90 * scale), math.floor(90 * scale)), 
-            BackgroundTransparency = 1, 
-            BorderSizePixel = 0, 
-            ZIndex = 3, 
-            Parent = roseBackground, 
-        }) 
-     
-        local center = UDim2.fromScale(0.5, 0.4) 
-     
-        -- Layer 1: Outer Petals (5 wide petals) 
-        for i = 0, 4 do 
-            local angle = (i * 72) + rotationOffset 
-            createPetal( 
-                motif,  
-                center,  
-                UDim2.fromOffset(math.floor(22 * scale), math.floor(26 * scale)),  
-                angle,  
-                0.96, -- Fades beautifully into the background at the base 
-                0.88  -- Slightly visible at the edges 
-            ) 
-        end 
-     
-        -- Layer 2: Middle Petals (5 petals, offset to fill gaps) 
-        for i = 0, 4 do 
-            local angle = (i * 72) + 36 + rotationOffset 
-            createPetal( 
-                motif,  
-                center,  
-                UDim2.fromOffset(math.floor(16 * scale), math.floor(20 * scale)),  
-                angle,  
-                0.93,  
-                0.83 
-            ) 
-        end 
-     
-        -- Layer 3: Inner Bud (3 tight petals) 
-        for i = 0, 2 do 
-            local angle = (i * 120) + 18 + rotationOffset 
-            createPetal( 
-                motif,  
-                center,  
-                UDim2.fromOffset(math.floor(10 * scale), math.floor(12 * scale)),  
-                angle,  
-                0.90,  
-                0.75 
-            ) 
-        end 
-     
-        -- Central Core 
-        roundedPart( 
-            motif, 
-            center, 
-            Vector2.new(0.5, 0.5), 
-            UDim2.fromOffset(math.floor(6 * scale), math.floor(6 * scale)), 
-            0, 
-            0.70 
-        ) 
-     
-        -- Damask sweeping leaves 
-        roundedPart( 
-            motif, 
-            UDim2.new(0.5, -4 * scale, 0.5, 0), 
-            Vector2.new(1, 0), 
-            UDim2.fromOffset(math.floor(18 * scale), math.floor(4 * scale)), 
-            -40 + rotationOffset, 
-            0.88 
-        ) 
-         
-        roundedPart( 
-            motif, 
-            UDim2.new(0.5, 4 * scale, 0.5, 0), 
-            Vector2.new(0, 0), 
-            UDim2.fromOffset(math.floor(18 * scale), math.floor(4 * scale)), 
-            40 + rotationOffset, 
-            0.88 
-        ) 
-     
-        -- Stem (Uses a gradient so it fades out into the background entirely at the bottom) 
-        local stem = create("Frame", { 
-            AnchorPoint = Vector2.new(0.5, 0), 
-            Position = UDim2.new(0.5, 0, 0.45, 0), 
-            Size = UDim2.fromOffset(math.max(1, math.floor(1.5 * scale)), math.floor(35 * scale)), 
-            BackgroundColor3 = themeColor, 
-            BorderSizePixel = 0, 
-            ZIndex = 2, 
-            Parent = motif, 
-        }) 
-         
-        create("UIGradient", { 
-            Rotation = 90, 
-            Transparency = NumberSequence.new({ 
-                NumberSequenceKeypoint.new(0, 0.85), 
-                NumberSequenceKeypoint.new(1, 1) -- Smooth fade out 
-            }), 
-            Parent = stem 
-        }) 
-    end 
-     
-    -- Slightly larger tile spacing to ensure the UI doesn't look cluttered 
-    local tileX = 110 
-    local tileY = 110 
-    local row = 0 
-     
-    for y = -40, height + tileY, tileY do 
-        local offset = (row % 2 == 0) and -(tileX / 2) or 0 
-        local column = 0 
-     
-        for x = -50 + offset, width + tileX, tileX do 
-            -- Alternate size and add a slight tilt to break up visual repetition 
-            local scale = (column % 2 == 0) and 0.85 or 0.65 
-            local tilt = ((row + column) % 2 == 1) and 12 or -12 
-     
-            createRose( 
-                x, 
-                y, 
-                scale, 
-                tilt 
-            ) 
-     
-            column += 1 
-        end 
-     
-        row += 1 
-    end 
+    })
+
+    local themeColor = Color3.fromRGB(255, 255, 255)
+
+    local function softPart(parent, position, anchor, size, rotation, transparency, corner)
+        local part = create("Frame", {
+            AnchorPoint = anchor or Vector2.new(0.5, 0.5),
+            Position = position,
+            Size = size,
+            Rotation = rotation or 0,
+            BackgroundColor3 = themeColor,
+            BackgroundTransparency = transparency or 0.82,
+            BorderSizePixel = 0,
+            ZIndex = 3,
+            Parent = parent,
+        })
+
+        create("UICorner", {
+            CornerRadius = UDim.new(corner or 1, 0),
+            Parent = part,
+        })
+
+        return part
+    end
+
+    local function createPetal(parent, center, width, height, rotation, transparency)
+        local petal = softPart(
+            parent,
+            center,
+            Vector2.new(0.5, 1),
+            UDim2.fromOffset(width, height),
+            rotation,
+            transparency,
+            0.5
+        )
+
+        create("UIGradient", {
+            Rotation = 90,
+            Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.18),
+                NumberSequenceKeypoint.new(0.55, 0.42),
+                NumberSequenceKeypoint.new(1, 0.78),
+            }),
+            Parent = petal,
+        })
+
+        return petal
+    end
+
+    local function createRose(centerX, centerY, scale, rotationOffset)
+        local size = math.floor(82 * scale)
+        local motif = create("Frame", {
+            Name = "RoseMotif",
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromOffset(centerX, centerY),
+            Size = UDim2.fromOffset(size, size),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            ZIndex = 3,
+            Parent = roseBackground,
+        })
+
+        local center = UDim2.fromScale(0.5, 0.42)
+
+        -- Broad outer petals.  These are intentionally narrow and highly
+        -- transparent so the result reads as a damask rose, not a flower icon.
+        for i = 0, 5 do
+            createPetal(
+                motif,
+                center,
+                math.max(5, math.floor(14 * scale)),
+                math.max(10, math.floor(22 * scale)),
+                (i * 60) + rotationOffset,
+                0.76
+            )
+        end
+
+        -- Inner petals, offset into the gaps.
+        for i = 0, 4 do
+            createPetal(
+                motif,
+                center,
+                math.max(4, math.floor(10 * scale)),
+                math.max(7, math.floor(15 * scale)),
+                (i * 72) + 36 + rotationOffset,
+                0.70
+            )
+        end
+
+        -- Small soft centre rather than a bright solid dot.
+        softPart(
+            motif,
+            center,
+            Vector2.new(0.5, 0.5),
+            UDim2.fromOffset(math.max(3, math.floor(5 * scale)), math.max(3, math.floor(5 * scale))),
+            0,
+            0.58,
+            1
+        )
+
+        -- Curved-looking damask leaves made from thin rotated pills.
+        local leafY = 0.60
+        softPart(
+            motif,
+            UDim2.new(0.5, -5 * scale, leafY, 0),
+            Vector2.new(1, 0.5),
+            UDim2.fromOffset(math.max(8, math.floor(17 * scale)), math.max(2, math.floor(4 * scale))),
+            -32 + rotationOffset * 0.15,
+            0.78,
+            1
+        )
+        softPart(
+            motif,
+            UDim2.new(0.5, 5 * scale, leafY + 0.035, 0),
+            Vector2.new(0, 0.5),
+            UDim2.fromOffset(math.max(8, math.floor(17 * scale)), math.max(2, math.floor(4 * scale))),
+            32 + rotationOffset * 0.15,
+            0.78,
+            1
+        )
+
+        -- Very thin fading stem.
+        local stem = create("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0),
+            Position = UDim2.new(0.5, 0, 0.56, 0),
+            Size = UDim2.fromOffset(1, math.max(10, math.floor(24 * scale))),
+            BackgroundColor3 = themeColor,
+            BackgroundTransparency = 0.74,
+            BorderSizePixel = 0,
+            ZIndex = 2,
+            Parent = motif,
+        })
+
+        create("UIGradient", {
+            Rotation = 90,
+            Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.10),
+                NumberSequenceKeypoint.new(1, 1),
+            }),
+            Parent = stem,
+        })
+    end
+
+    -- Wider, staggered spacing.  Centres stay inside the window so there are
+    -- no ugly chopped flowers along the frame edges.
+    local tileX = 138
+    local tileY = 132
+    local firstY = 88 -- keeps the title/tab/control area visually clean
+    local row = 0
+
+    for y = firstY, height - 34, tileY do
+        local offset = (row % 2 == 0) and 0 or math.floor(tileX / 2)
+        local column = 0
+
+        for x = 50 + offset, width - 38, tileX do
+            local scale = ((row + column) % 3 == 0) and 0.70 or 0.60
+            local tilt = ((row + column) % 2 == 0) and -7 or 7
+            createRose(x, y, scale, tilt)
+            column += 1
+        end
+
+        row += 1
+    end
 
     create("Frame", {
         Name = "InnerBorder",
