@@ -19,7 +19,7 @@ local TextService = game:GetService("TextService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.3.0",
+    Version = "3.3.1",
     Flags = {},
     Window = nil,
 }
@@ -111,29 +111,38 @@ local function codeLabel(parent, text, size, color, zIndex)
 end
 
 local function getGuiParent(screenGui)
-    if type(gethui) == "function" then
-        local ok, target = pcall(gethui)
-        if ok and target then
-            screenGui.Parent = target
-            return target
-        end
-    end
-
-    local ok = pcall(function()
-        screenGui.Parent = CoreGui
-    end)
-    if ok and screenGui.Parent then
-        return CoreGui
-    end
-
+    -- Prefer PlayerGui. Some executor/plugin environments allow the initial
+    -- load thread to touch CoreGui/gethui(), but later task.spawn callbacks run
+    -- with a lower capability and then fail when updating those descendants.
+    -- PlayerGui keeps every UI instance accessible from normal game threads.
     local playerGui = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
     if not playerGui and LocalPlayer then
         playerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
     end
+
     if playerGui then
-        screenGui.Parent = playerGui
+        local ok = pcall(function()
+            screenGui.Parent = playerGui
+        end)
+        if ok and screenGui.Parent == playerGui then
+            return playerGui
+        end
     end
-    return playerGui
+
+    -- Compatibility fallback only when PlayerGui is genuinely unavailable.
+    if type(gethui) == "function" then
+        local ok, target = pcall(gethui)
+        if ok and target then
+            local parented = pcall(function()
+                screenGui.Parent = target
+            end)
+            if parented then
+                return target
+            end
+        end
+    end
+
+    return nil
 end
 
 local function normalizeDropdownValue(value)
@@ -147,6 +156,20 @@ local function safeCallback(callback, ...)
     if type(callback) == "function" then
         task.spawn(callback, ...)
     end
+end
+
+-- Runtime-safe property update for live labels/paragraphs. This is intentionally
+-- used by public Set() methods because they are often called from farm worker
+-- threads long after the UI was created.
+local function safeSet(instance, property, value)
+    if not instance then
+        return false
+    end
+
+    local ok = pcall(function()
+        instance[property] = value
+    end)
+    return ok
 end
 
 local function setHover(button, normal, hover)
@@ -673,6 +696,7 @@ function PuckUI:CreateWindow(settings)
         OpenPopup = nil,
         CloseCallback = nil,
         Minimized = false,
+        Visible = true,
         FullSize = UDim2.fromOffset(width, height),
         ToggleKeyName = tostring(SharedUIState.ToggleKeyName or "K"),
         ToggleKeyCode = Enum.KeyCode.K,
@@ -768,15 +792,19 @@ function PuckUI:CreateWindow(settings)
     end
 
     function window:SetVisible(state)
-        self.Main.Visible = state == true
-        if shadow then shadow.Visible = state == true end
-        if not self.Main.Visible then
+        local visible = state == true
+        self.Visible = visible
+        safeSet(self.Main, "Visible", visible)
+        if shadow then
+            safeSet(shadow, "Visible", visible)
+        end
+        if not visible then
             self:ClosePopup()
         end
     end
 
     function window:Toggle()
-        self:SetVisible(not self.Main.Visible)
+        self:SetVisible(not self.Visible)
     end
 
     function window:_ApplyToggleKey(key)
@@ -1200,9 +1228,9 @@ function PuckUI:CreateWindow(settings)
             }
 
             function object:Set(value, _newIcon, newColor)
-                label.Text = tostring(value or "")
+                safeSet(label, "Text", tostring(value or ""))
                 if typeof(newColor) == "Color3" then
-                    label.TextColor3 = newColor
+                    safeSet(label, "TextColor3", newColor)
                 end
             end
 
@@ -1236,13 +1264,13 @@ function PuckUI:CreateWindow(settings)
             function object:Set(nextData)
                 if type(nextData) == "table" then
                     if nextData.Title ~= nil then
-                        title.Text = tostring(nextData.Title)
+                        safeSet(title, "Text", tostring(nextData.Title))
                     end
                     if nextData.Content ~= nil then
-                        body.Text = tostring(nextData.Content)
+                        safeSet(body, "Text", tostring(nextData.Content))
                     end
                 else
-                    body.Text = tostring(nextData or "")
+                    safeSet(body, "Text", tostring(nextData or ""))
                 end
             end
 
