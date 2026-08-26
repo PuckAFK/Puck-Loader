@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.1 - Combined Edition
+    PuckUI v3.2 - Combined Edition / Layout Fix
     Shared PuckAFK game-script UI.
 
     Combined from both supplied PuckUI variants:
@@ -19,7 +19,7 @@ local TextService = game:GetService("TextService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.1.0",
+    Version = "3.2.0",
     Flags = {},
     Window = nil,
 }
@@ -402,13 +402,36 @@ function PuckUI:CreateWindow(settings)
         Parent = tabBar,
     })
 
+    -- Separator under the tab row. Keeping this separate from the active-tab
+    -- highlight prevents the header from looking broken when only one tab exists.
+    create("Frame", {
+        Name = "TabSeparatorDark",
+        Position = UDim2.fromOffset(2, 49),
+        Size = UDim2.new(1, -4, 0, 1),
+        BackgroundColor3 = Theme.BorderDark,
+        BorderSizePixel = 0,
+        ZIndex = 8,
+        Parent = main,
+    })
+
+    create("Frame", {
+        Name = "TabSeparator",
+        Position = UDim2.fromOffset(2, 50),
+        Size = UDim2.new(1, -4, 0, 1),
+        BackgroundColor3 = Theme.Border,
+        BackgroundTransparency = 0.45,
+        BorderSizePixel = 0,
+        ZIndex = 8,
+        Parent = main,
+    })
+
     local columnsHost = create("Frame", {
         Name = "ColumnsHost",
-        Position = UDim2.fromOffset(6, 56),
-        Size = UDim2.new(1, -12, 1, -62),
+        Position = UDim2.fromOffset(8, 57),
+        Size = UDim2.new(1, -16, 1, -65),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        ClipsDescendants = false,
+        ClipsDescendants = true,
         ZIndex = 4,
         Parent = main,
     })
@@ -619,6 +642,12 @@ function PuckUI:CreateWindow(settings)
         local textSize = TextService:GetTextSize(tab.Name, 13, Enum.Font.Code, Vector2.new(1000, 18))
         local buttonWidth = math.max(38, textSize.X + 10)
 
+        -- New tabs always begin from the left edge. This also clears stale
+        -- CanvasPosition values left over by some executor/Studio UI states.
+        if #self.Tabs == 0 then
+            tabBar.CanvasPosition = Vector2.new(0, 0)
+        end
+
         local button = create("TextButton", {
             Name = "Tab_" .. tab.Name,
             LayoutOrder = #self.Tabs + 1,
@@ -658,6 +687,20 @@ function PuckUI:CreateWindow(settings)
         })
 
         local columns = {}
+        local columnLayouts = {}
+
+        local function updateColumnCanvas(index)
+            local scroll = columns[index]
+            local layout = columnLayouts[index]
+            if not scroll or not layout then
+                return
+            end
+
+            -- Manual CanvasSize is more reliable than nested AutomaticCanvasSize
+            -- when this library is used through Studio/executor environments.
+            local contentHeight = math.max(0, layout.AbsoluteContentSize.Y + 14)
+            scroll.CanvasSize = UDim2.fromOffset(0, contentHeight)
+        end
 
         for index = 1, 2 do
             local leftSide = index == 1
@@ -668,16 +711,17 @@ function PuckUI:CreateWindow(settings)
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
                 CanvasSize = UDim2.new(),
-                AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                AutomaticCanvasSize = Enum.AutomaticSize.None,
                 ScrollBarThickness = 2,
                 ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60),
                 ScrollingDirection = Enum.ScrollingDirection.Y,
                 ElasticBehavior = Enum.ElasticBehavior.Never,
+                ClipsDescendants = true,
                 ZIndex = 4,
                 Parent = container,
             })
 
-            create("UIListLayout", {
+            local layout = create("UIListLayout", {
                 SortOrder = Enum.SortOrder.LayoutOrder,
                 Padding = UDim.new(0, 8),
                 Parent = scroll,
@@ -686,9 +730,13 @@ function PuckUI:CreateWindow(settings)
             create("UIPadding", {
                 PaddingTop = UDim.new(0, 8),
                 PaddingRight = UDim.new(0, leftSide and 3 or 0),
-                PaddingBottom = UDim.new(0, 5),
+                PaddingBottom = UDim.new(0, 6),
                 Parent = scroll,
             })
+
+            layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                updateColumnCanvas(index)
+            end)
 
             scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
                 if window.OpenPopup then
@@ -697,6 +745,7 @@ function PuckUI:CreateWindow(settings)
             end)
 
             columns[index] = scroll
+            columnLayouts[index] = layout
         end
 
         tab.Button = button
@@ -704,16 +753,44 @@ function PuckUI:CreateWindow(settings)
         tab.Container = container
         tab.Columns = columns
 
-        local function chooseColumn()
-            local leftLayout = columns[1]:FindFirstChildOfClass("UIListLayout")
-            local rightLayout = columns[2]:FindFirstChildOfClass("UIListLayout")
-            local leftHeight = leftLayout and leftLayout.AbsoluteContentSize.Y or 0
-            local rightHeight = rightLayout and rightLayout.AbsoluteContentSize.Y or 0
+        -- Reflow rules:
+        --   1 section  -> one full-width column (fixes the giant empty right side)
+        --   2+ sections -> stable two-column alternating layout
+        -- We do not use AbsoluteContentSize to choose a column at creation time,
+        -- because Roblox may not update it until a later render step.
+        local function reflowSections()
+            local count = #tab.Sections
 
-            if leftHeight <= rightHeight then
-                return columns[1]
+            if count <= 1 then
+                columns[1].Visible = true
+                columns[1].Position = UDim2.new(0, 0, 0, 0)
+                columns[1].Size = UDim2.new(1, 0, 1, 0)
+                columns[2].Visible = false
+                columns[2].CanvasPosition = Vector2.new(0, 0)
+
+                if count == 1 and tab.Sections[1].Frame.Parent ~= columns[1] then
+                    tab.Sections[1].Frame.Parent = columns[1]
+                end
+            else
+                columns[1].Visible = true
+                columns[2].Visible = true
+                columns[1].Position = UDim2.new(0, 0, 0, 0)
+                columns[1].Size = UDim2.new(0.5, -4, 1, 0)
+                columns[2].Position = UDim2.new(0.5, 4, 0, 0)
+                columns[2].Size = UDim2.new(0.5, -4, 1, 0)
+
+                for sectionIndex, existingSection in ipairs(tab.Sections) do
+                    local targetColumn = ((sectionIndex - 1) % 2) + 1
+                    if existingSection.Frame.Parent ~= columns[targetColumn] then
+                        existingSection.Frame.Parent = columns[targetColumn]
+                    end
+                end
             end
-            return columns[2]
+
+            task.defer(function()
+                updateColumnCanvas(1)
+                updateColumnCanvas(2)
+            end)
         end
 
         function tab:CreateSection(sectionName)
@@ -725,14 +802,13 @@ function PuckUI:CreateWindow(settings)
             local frame = create("Frame", {
                 Name = "Section_" .. section.Name,
                 Size = UDim2.new(1, -2, 0, 24),
-                AutomaticSize = Enum.AutomaticSize.Y,
                 BackgroundColor3 = Theme.SectionInner,
                 BackgroundTransparency = 0.5,
                 BorderColor3 = Theme.BorderDark,
                 BorderSizePixel = 1,
                 ClipsDescendants = false,
                 ZIndex = 5,
-                Parent = chooseColumn(),
+                Parent = columns[1],
             })
 
             create("UIStroke", {
@@ -741,7 +817,6 @@ function PuckUI:CreateWindow(settings)
                 Parent = frame,
             })
 
-            -- Aztup signature blue top line on the groupbox
             local topAccentLine = create("Frame", {
                 Position = UDim2.fromOffset(0, 0),
                 Size = UDim2.new(1, 0, 0, 1),
@@ -753,8 +828,7 @@ function PuckUI:CreateWindow(settings)
             table.insert(window.AccentObjects, topAccentLine)
 
             local titleWidth = TextService:GetTextSize(section.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 12
-            
-            -- Patch to break the border and the blue line for the text
+
             local headerPatch = create("Frame", {
                 Position = UDim2.fromOffset(12, -7),
                 Size = UDim2.fromOffset(titleWidth, 14),
@@ -771,9 +845,8 @@ function PuckUI:CreateWindow(settings)
 
             local body = create("Frame", {
                 Name = "Body",
-                Position = UDim2.fromOffset(6, 12),
-                Size = UDim2.new(1, -12, 0, 0),
-                AutomaticSize = Enum.AutomaticSize.Y,
+                Position = UDim2.fromOffset(8, 14),
+                Size = UDim2.new(1, -16, 0, 0),
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
                 ClipsDescendants = false,
@@ -781,16 +854,30 @@ function PuckUI:CreateWindow(settings)
                 Parent = frame,
             })
 
-            create("UIListLayout", {
+            local bodyLayout = create("UIListLayout", {
                 SortOrder = Enum.SortOrder.LayoutOrder,
-                Padding = UDim.new(0, 3),
+                Padding = UDim.new(0, 4),
                 Parent = body,
             })
 
             create("UIPadding", {
-                PaddingBottom = UDim.new(0, 6),
+                PaddingBottom = UDim.new(0, 8),
                 Parent = body,
             })
+
+            local function updateSectionSize()
+                local bodyHeight = math.max(0, bodyLayout.AbsoluteContentSize.Y + 8)
+                body.Size = UDim2.new(1, -16, 0, bodyHeight)
+                frame.Size = UDim2.new(1, -2, 0, math.max(28, 14 + bodyHeight))
+            end
+
+            bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                updateSectionSize()
+                task.defer(function()
+                    updateColumnCanvas(1)
+                    updateColumnCanvas(2)
+                end)
+            end)
 
             section.Frame = frame
             section.Body = body
@@ -804,6 +891,9 @@ function PuckUI:CreateWindow(settings)
 
             table.insert(self.Sections, section)
             self._currentSection = section
+            reflowSections()
+
+            task.defer(updateSectionSize)
             return section
         end
 
@@ -1438,6 +1528,7 @@ function PuckUI:CreateWindow(settings)
         if #self.Tabs == 1 then
             task.defer(function()
                 if button.Parent then
+                    tabBar.CanvasPosition = Vector2.new(0, 0)
                     self:SelectTab(tab)
                 end
             end)
@@ -1464,7 +1555,7 @@ function PuckUI:CreateWindow(settings)
 
         if window.Minimized then
             main.Size = UDim2.fromOffset(width, 27)
-            shadow.Size = UDim2.fromOffset(width, 25)
+            shadow.Size = UDim2.fromOffset(width, 27)
             minimize.Text = "+"
         else
             main.Size = window.FullSize
