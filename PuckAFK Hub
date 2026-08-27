@@ -2,9 +2,10 @@
     PuckAFK Hub - Free Animated Loader
 
     Supported places:
-      Get Rich ASAP : 128481067661991
-      Chicken Farm  : 137233438285284
-      SevenM Hood   : 131558436575033
+      Get Rich ASAP          : 128481067661991
+      Chicken Farm           : 137233438285284
+      SevenM Hood            : 131558436575033
+      +1 Speed Monkey Escape : 114697347887839
 
     One free loader for all supported PuckAFK scripts.
     Includes automatic PlaceId detection and a manual script dropdown.
@@ -29,6 +30,11 @@ local ROUTES = {
         name = "SevenM Hood",
         source = "github.com/PuckAFK/SevenM-Hood",
         url = "https://raw.githubusercontent.com/PuckAFK/SevenM-Hood/main/aim.lua",
+    },
+    [114697347887839] = {
+        name = "+1 Speed Monkey Escape",
+        source = "github.com/PuckAFK/1-Speed-Monkey-Escape",
+        url = "https://raw.githubusercontent.com/PuckAFK/1-Speed-Monkey-Escape/main/1%20Speed%20Monkey%20Escape.lua",
     },
 }
 
@@ -378,7 +384,7 @@ local function chooseRouteManually(placeId)
     menu.GroupTransparency = 1
     menu.Visible = false
     menu.Position = UDim2.fromOffset(0, 46)
-    menu.Size = UDim2.new(1, 0, 0, 126)
+    menu.Size = UDim2.new(1, 0, 0, 166)
     menu.ZIndex = 20
     menu.Parent = picker
 
@@ -408,6 +414,7 @@ local function chooseRouteManually(placeId)
         ROUTES[128481067661991],
         ROUTES[137233438285284],
         ROUTES[131558436575033],
+        ROUTES[114697347887839],
     }
 
     local function setDropdown(openState)
@@ -418,11 +425,11 @@ local function chooseRouteManually(placeId)
             menu.Visible = true
 
             tween(card, 0.28, {
-                Size = UDim2.fromOffset(360, 326),
+                Size = UDim2.fromOffset(360, 366),
             }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
             tween(picker, 0.28, {
-                Size = UDim2.new(1, -48, 0, 176),
+                Size = UDim2.new(1, -48, 0, 216),
             }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
             tween(menu, 0.18, {
