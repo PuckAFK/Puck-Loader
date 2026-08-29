@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.3 - Rose Refined / Global Settings Keybind
+    PuckUI v3.4 - Rose Refined / Global Keybind + Configs
     Shared PuckAFK game-script UI.
 
     Combined from both supplied PuckUI variants:
@@ -15,11 +15,12 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local TextService = game:GetService("TextService")
+local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.3.1",
+    Version = "3.4.0",
     Flags = {},
     Window = nil,
 }
@@ -76,6 +77,84 @@ local SharedUIState = SharedEnvironment.__PUCKAFK_UI_SHARED_STATE
 SharedUIState.ToggleKeyName = SharedUIState.ToggleKeyName or "K"
 SharedUIState.Windows = SharedUIState.Windows or setmetatable({}, {__mode = "k"})
 SharedUIState.SuppressToggleUntil = SharedUIState.SuppressToggleUntil or 0
+
+-- Shared persistent-config defaults used by every PuckAFK UI.
+-- The Hub can override these values in getgenv() before a game script starts,
+-- but direct script execution gets the same defaults.
+SharedEnvironment.__PUCKAFK_CONFIG_SHARED_STATE =
+    SharedEnvironment.__PUCKAFK_CONFIG_SHARED_STATE
+    or {
+        Root = "PuckAFK/Configs",
+        AutoSaveDefault = true,
+        AutoLoadDefault = true,
+    }
+
+local SharedConfigState = SharedEnvironment.__PUCKAFK_CONFIG_SHARED_STATE
+SharedConfigState.Root = tostring(SharedConfigState.Root or "PuckAFK/Configs")
+if SharedConfigState.AutoSaveDefault == nil then
+    SharedConfigState.AutoSaveDefault = true
+end
+if SharedConfigState.AutoLoadDefault == nil then
+    SharedConfigState.AutoLoadDefault = true
+end
+
+local FileAPI = {
+    Write = type(writefile) == "function" and writefile or nil,
+    Read = type(readfile) == "function" and readfile or nil,
+    IsFile = type(isfile) == "function" and isfile or nil,
+    MakeFolder = type(makefolder) == "function" and makefolder or nil,
+    ListFiles = type(listfiles) == "function" and listfiles or nil,
+    DeleteFile = type(delfile) == "function" and delfile or nil,
+}
+
+local function sanitizeFileComponent(value, fallback)
+    local text = tostring(value or "")
+    text = text:gsub("[^%w%-%._ ]", "_")
+    text = text:gsub("^%s+", ""):gsub("%s+$", "")
+    text = text:gsub("%s+", "_")
+    text = text:gsub("_+", "_")
+
+    if text == "" then
+        text = tostring(fallback or "default")
+    end
+
+    return text:sub(1, 80)
+end
+
+local function ensureFolderPath(path)
+    if not FileAPI.MakeFolder then
+        return false
+    end
+
+    local current = ""
+    for part in tostring(path):gmatch("[^/\\]+") do
+        current = current == "" and part or (current .. "/" .. part)
+        pcall(FileAPI.MakeFolder, current)
+    end
+
+    return true
+end
+
+local function jsonDecode(text)
+    if type(text) ~= "string" or text == "" then
+        return nil
+    end
+
+    local ok, value = pcall(function()
+        return HttpService:JSONDecode(text)
+    end)
+
+    return ok and value or nil
+end
+
+local function jsonEncode(value)
+    local ok, text = pcall(function()
+        return HttpService:JSONEncode(value)
+    end)
+
+    return ok and text or nil
+end
+
 
 local function create(className, properties)
     local object = Instance.new(className)
@@ -702,6 +781,386 @@ function PuckUI:CreateWindow(settings)
         ToggleKeyCode = Enum.KeyCode.K,
         KeybindDisplays = {},
     }
+
+    ------------------------------------------------------------------------
+    -- Shared persistent configuration
+    ------------------------------------------------------------------------
+    local configSettings = type(settings.Configs) == "table" and settings.Configs or {}
+    local configId = sanitizeFileComponent(
+        settings.ConfigId or settings.GuiName or settings.Name or settings.Title,
+        "PuckAFK"
+    )
+
+    local config = {
+        Enabled = settings.DisableConfigs ~= true,
+        Available = false,
+        Root = tostring(configSettings.Root or SharedConfigState.Root),
+        Id = configId,
+        Folder = "",
+        MetaPath = "",
+        Selected = sanitizeFileComponent(configSettings.DefaultProfile or "default", "default"),
+        AutoSave = SharedConfigState.AutoSaveDefault == true,
+        AutoLoad = SharedConfigState.AutoLoadDefault == true,
+        Controls = {},
+        LoadedValues = {},
+        Applying = false,
+        Ready = false,
+        LastFingerprint = nil,
+        StatusLabel = nil,
+        ProfilesDropdown = nil,
+        ProfileInput = nil,
+    }
+
+    config.Folder = config.Root .. "/" .. config.Id
+    config.MetaPath = config.Folder .. "/_meta.json"
+    config.Available =
+        config.Enabled
+        and FileAPI.Write ~= nil
+        and FileAPI.Read ~= nil
+        and FileAPI.IsFile ~= nil
+        and FileAPI.MakeFolder ~= nil
+
+    if configSettings.AutoSave ~= nil then
+        config.AutoSave = configSettings.AutoSave == true
+    end
+    if configSettings.AutoLoad ~= nil then
+        config.AutoLoad = configSettings.AutoLoad == true
+    end
+
+    window.Config = config
+
+    local function configFilePath(profile)
+        return config.Folder
+            .. "/"
+            .. sanitizeFileComponent(profile, "default")
+            .. ".json"
+    end
+
+    local function setConfigStatus(text)
+        local value = tostring(text or "")
+        if config.StatusLabel and config.StatusLabel.Set then
+            config.StatusLabel:Set(value)
+        end
+    end
+
+    function window:_SaveConfigMeta()
+        if not config.Available then
+            return false
+        end
+
+        local encoded = jsonEncode({
+            Version = 1,
+            Selected = config.Selected,
+            AutoSave = config.AutoSave,
+            AutoLoad = config.AutoLoad,
+        })
+
+        if not encoded then
+            return false
+        end
+
+        local ok = pcall(FileAPI.Write, config.MetaPath, encoded)
+        return ok == true
+    end
+
+    local function loadConfigMeta()
+        if not config.Available or not FileAPI.IsFile(config.MetaPath) then
+            return
+        end
+
+        local ok, text = pcall(FileAPI.Read, config.MetaPath)
+        if not ok then
+            return
+        end
+
+        local data = jsonDecode(text)
+        if type(data) ~= "table" then
+            return
+        end
+
+        if data.Selected ~= nil then
+            config.Selected = sanitizeFileComponent(data.Selected, "default")
+        end
+        if data.AutoSave ~= nil then
+            config.AutoSave = data.AutoSave == true
+        end
+        if data.AutoLoad ~= nil then
+            config.AutoLoad = data.AutoLoad == true
+        end
+    end
+
+    function window:_SnapshotConfigValues()
+        local values = {}
+
+        for key, control in pairs(config.Controls) do
+            if control and control.Get then
+                local ok, value = pcall(function()
+                    return control:Get()
+                end)
+
+                if ok then
+                    local valueType = typeof(value)
+                    if valueType == "boolean"
+                        or valueType == "number"
+                        or valueType == "string" then
+                        values[key] = value
+                    end
+                end
+            end
+        end
+
+        return values
+    end
+
+    function window:_ConfigFingerprint()
+        return jsonEncode(self:_SnapshotConfigValues()) or ""
+    end
+
+    function window:_WriteConfig(profile, showNotification)
+        if not config.Available then
+            setConfigStatus("Configs unavailable • executor filesystem APIs missing")
+            if showNotification then
+                PuckUI:Notify({
+                    Title = "Configs",
+                    Content = "This executor does not expose writefile/readfile/makefolder.",
+                    Duration = 3,
+                })
+            end
+            return false
+        end
+
+        local cleanProfile = sanitizeFileComponent(profile or config.Selected, "default")
+        config.Selected = cleanProfile
+        ensureFolderPath(config.Folder)
+
+        local payload = {
+            Version = 1,
+            PuckUIVersion = PuckUI.Version,
+            ConfigId = config.Id,
+            Profile = cleanProfile,
+            Values = self:_SnapshotConfigValues(),
+        }
+
+        local encoded = jsonEncode(payload)
+        if not encoded then
+            setConfigStatus("Save failed • JSON encode error")
+            return false
+        end
+
+        local ok, err = pcall(FileAPI.Write, configFilePath(cleanProfile), encoded)
+        if not ok then
+            setConfigStatus("Save failed • " .. tostring(err))
+            return false
+        end
+
+        self:_SaveConfigMeta()
+        config.LastFingerprint = self:_ConfigFingerprint()
+        setConfigStatus("Saved • " .. cleanProfile)
+
+        if showNotification then
+            PuckUI:Notify({
+                Title = "Configs",
+                Content = "Saved " .. cleanProfile,
+                Duration = 2,
+            })
+        end
+
+        return true
+    end
+
+    function window:_ApplyConfigValues(values)
+        if type(values) ~= "table" then
+            return false
+        end
+
+        config.Applying = true
+
+        for key, value in pairs(values) do
+            local control = config.Controls[key]
+            if control and control.Set then
+                pcall(function()
+                    control:Set(value)
+                end)
+            else
+                -- Keep the value around in case this control is created later.
+                config.LoadedValues[key] = value
+            end
+        end
+
+        config.Applying = false
+        config.LastFingerprint = self:_ConfigFingerprint()
+        return true
+    end
+
+    function window:_ReadConfig(profile, showNotification)
+        if not config.Available then
+            setConfigStatus("Configs unavailable • executor filesystem APIs missing")
+            return false
+        end
+
+        local cleanProfile = sanitizeFileComponent(profile or config.Selected, "default")
+        local path = configFilePath(cleanProfile)
+
+        if not FileAPI.IsFile(path) then
+            setConfigStatus("Not found • " .. cleanProfile)
+            if showNotification then
+                PuckUI:Notify({
+                    Title = "Configs",
+                    Content = "Config not found: " .. cleanProfile,
+                    Duration = 2.5,
+                })
+            end
+            return false
+        end
+
+        local ok, text = pcall(FileAPI.Read, path)
+        if not ok then
+            setConfigStatus("Load failed • could not read file")
+            return false
+        end
+
+        local data = jsonDecode(text)
+        if type(data) ~= "table" or type(data.Values) ~= "table" then
+            setConfigStatus("Load failed • invalid config file")
+            return false
+        end
+
+        config.Selected = cleanProfile
+        config.LoadedValues = data.Values
+        self:_ApplyConfigValues(data.Values)
+        self:_SaveConfigMeta()
+        setConfigStatus("Loaded • " .. cleanProfile)
+
+        if showNotification then
+            PuckUI:Notify({
+                Title = "Configs",
+                Content = "Loaded " .. cleanProfile,
+                Duration = 2,
+            })
+        end
+
+        return true
+    end
+
+    function window:_DeleteConfig(profile)
+        if not config.Available or not FileAPI.DeleteFile then
+            setConfigStatus("Delete unavailable in this executor")
+            return false
+        end
+
+        local cleanProfile = sanitizeFileComponent(profile or config.Selected, "default")
+        local path = configFilePath(cleanProfile)
+
+        if not FileAPI.IsFile(path) then
+            setConfigStatus("Not found • " .. cleanProfile)
+            return false
+        end
+
+        local ok = pcall(FileAPI.DeleteFile, path)
+        if not ok then
+            setConfigStatus("Delete failed • " .. cleanProfile)
+            return false
+        end
+
+        if config.Selected == cleanProfile then
+            config.Selected = "default"
+        end
+
+        self:_SaveConfigMeta()
+        setConfigStatus("Deleted • " .. cleanProfile)
+        return true
+    end
+
+    function window:_ListConfigProfiles()
+        local found = {}
+        local seen = {}
+
+        local function add(name)
+            local clean = sanitizeFileComponent(name, "default")
+            if not seen[clean] then
+                seen[clean] = true
+                table.insert(found, clean)
+            end
+        end
+
+        add(config.Selected)
+        add("default")
+
+        if config.Available and FileAPI.ListFiles then
+            local ok, files = pcall(FileAPI.ListFiles, config.Folder)
+            if ok and type(files) == "table" then
+                for _, path in ipairs(files) do
+                    local normalized = tostring(path):gsub("\\", "/")
+                    local name = normalized:match("([^/]+)%.json$")
+                    if name and name ~= "_meta" then
+                        add(name)
+                    end
+                end
+            end
+        end
+
+        table.sort(found)
+        return found
+    end
+
+    function window:_RegisterConfigControl(tab, data, control)
+        if not config.Enabled
+            or not control
+            or type(data) ~= "table"
+            or data.NoConfig == true then
+            return
+        end
+
+        local baseName = data.ConfigKey or data.Flag or data.Name or data.Text
+        if baseName == nil then
+            return
+        end
+
+        local key = tostring(tab.Name) .. "." .. tostring(baseName)
+        if config.Controls[key] and config.Controls[key] ~= control then
+            local suffix = 2
+            local original = key
+            while config.Controls[key] do
+                key = original .. "#" .. tostring(suffix)
+                suffix += 1
+            end
+        end
+
+        config.Controls[key] = control
+
+        local loaded = config.LoadedValues[key]
+        if loaded ~= nil and control.Set then
+            task.defer(function()
+                if not control.Set then
+                    return
+                end
+
+                config.Applying = true
+                pcall(function()
+                    control:Set(loaded)
+                end)
+                config.Applying = false
+            end)
+        end
+    end
+
+    if config.Available then
+        ensureFolderPath(config.Folder)
+        loadConfigMeta()
+
+        if config.AutoLoad then
+            local path = configFilePath(config.Selected)
+            if FileAPI.IsFile(path) then
+                local ok, text = pcall(FileAPI.Read, path)
+                if ok then
+                    local data = jsonDecode(text)
+                    if type(data) == "table" and type(data.Values) == "table" then
+                        config.LoadedValues = data.Values
+                    end
+                end
+            end
+        end
+    end
 
     self.Window = window
     SharedUIState.Windows[window] = true
@@ -1416,6 +1875,7 @@ function PuckUI:CreateWindow(settings)
                 PuckUI.Flags[flag] = state
             end
 
+            window:_RegisterConfigControl(tab, data, object)
             return object
         end
 
@@ -1626,6 +2086,7 @@ function PuckUI:CreateWindow(settings)
                 PuckUI.Flags[flag] = current
             end
 
+            window:_RegisterConfigControl(tab, data, object)
             return object
         end
 
@@ -1752,6 +2213,7 @@ function PuckUI:CreateWindow(settings)
                 PuckUI.Flags[flag] = value
             end
 
+            window:_RegisterConfigControl(tab, data, object)
             return object
         end
 
@@ -1830,6 +2292,7 @@ function PuckUI:CreateWindow(settings)
                 PuckUI.Flags[flag] = current
             end
 
+            window:_RegisterConfigControl(tab, data, object)
             return object
         end
 
@@ -1941,12 +2404,181 @@ function PuckUI:CreateWindow(settings)
             tab:CreateLabel("Click the box, then press any key. Escape cancels.")
         end
 
+        if string.lower(tab.Name) == "settings"
+            and settings.DisableBuiltInConfigs ~= true
+            and not self._CreatingConfigTab then
+            task.defer(function()
+                if self.ScreenGui and self.ScreenGui.Parent then
+                    self:_EnsureConfigTab()
+                end
+            end)
+        end
+
         if #self.Tabs == 1 then
             task.defer(function()
                 if button.Parent then
                     tabBar.CanvasPosition = Vector2.new(0, 0)
                     self:SelectTab(tab)
                 end
+            end)
+        end
+
+        return tab
+    end
+
+    function window:_EnsureConfigTab()
+        if self._ConfigTab or self._CreatingConfigTab or not config.Enabled then
+            return self._ConfigTab
+        end
+
+        self._CreatingConfigTab = true
+        local tab = self:CreateTab("Configs")
+        self._CreatingConfigTab = false
+        self._ConfigTab = tab
+
+        tab:CreateSection("Profiles")
+
+        config.StatusLabel = tab:CreateLabel(
+            config.Available
+                and ("Ready • " .. config.Selected)
+                or "Unavailable • executor filesystem APIs missing"
+        )
+
+        if not config.Available then
+            tab:CreateParagraph({
+                Title = "Persistent configs unavailable",
+                Content = "This executor needs writefile, readfile, isfile and makefolder for saved configs. The rest of PuckAFK still works normally.",
+                Height = 64,
+            })
+            return tab
+        end
+
+        config.ProfilesDropdown = tab:CreateDropdown({
+            Name = "Config Profile",
+            Options = self:_ListConfigProfiles(),
+            CurrentOption = {config.Selected},
+            NoConfig = true,
+            Callback = function(option)
+                local value = normalizeDropdownValue(option)
+                if value ~= nil then
+                    config.Selected = sanitizeFileComponent(value, "default")
+                    if config.ProfileInput and config.ProfileInput.Set then
+                        config.ProfileInput:Set(config.Selected)
+                    end
+                    self:_SaveConfigMeta()
+                    setConfigStatus("Selected • " .. config.Selected)
+                end
+            end,
+        })
+
+        config.ProfileInput = tab:CreateInput({
+            Name = "Profile Name",
+            CurrentValue = config.Selected,
+            PlaceholderText = "default",
+            NoConfig = true,
+            Callback = function(value)
+                config.PendingProfile = sanitizeFileComponent(value, config.Selected)
+            end,
+        })
+
+        tab:CreateButton({
+            Name = "Save / Create Profile",
+            Callback = function()
+                local profile = config.PendingProfile or config.Selected
+                config.Selected = sanitizeFileComponent(profile, "default")
+                self:_WriteConfig(config.Selected, true)
+
+                if config.ProfilesDropdown and config.ProfilesDropdown.Refresh then
+                    config.ProfilesDropdown:Refresh(self:_ListConfigProfiles())
+                    config.ProfilesDropdown:Set(config.Selected)
+                end
+            end,
+        })
+
+        tab:CreateButton({
+            Name = "Load Selected Profile",
+            Callback = function()
+                self:_ReadConfig(config.Selected, true)
+            end,
+        })
+
+        tab:CreateButton({
+            Name = "Refresh Profiles",
+            Callback = function()
+                if config.ProfilesDropdown and config.ProfilesDropdown.Refresh then
+                    config.ProfilesDropdown:Refresh(self:_ListConfigProfiles())
+                    config.ProfilesDropdown:Set(config.Selected)
+                end
+                setConfigStatus("Profiles refreshed")
+            end,
+        })
+
+        tab:CreateButton({
+            Name = "Delete Selected Profile",
+            Callback = function()
+                local deleted = config.Selected
+                if self:_DeleteConfig(deleted) then
+                    if config.ProfilesDropdown and config.ProfilesDropdown.Refresh then
+                        config.ProfilesDropdown:Refresh(self:_ListConfigProfiles())
+                        config.ProfilesDropdown:Set(config.Selected)
+                    end
+                    if config.ProfileInput and config.ProfileInput.Set then
+                        config.ProfileInput:Set(config.Selected)
+                    end
+                    PuckUI:Notify({
+                        Title = "Configs",
+                        Content = "Deleted " .. tostring(deleted),
+                        Duration = 2,
+                    })
+                end
+            end,
+        })
+
+        tab:CreateSection("Automation")
+
+        tab:CreateToggle({
+            Name = "Auto Save",
+            CurrentValue = config.AutoSave,
+            NoConfig = true,
+            Callback = function(value)
+                config.AutoSave = value == true
+                self:_SaveConfigMeta()
+                if config.AutoSave then
+                    self:_WriteConfig(config.Selected, false)
+                end
+                setConfigStatus(
+                    config.AutoSave
+                        and ("Auto Save ON • " .. config.Selected)
+                        or "Auto Save OFF"
+                )
+            end,
+        })
+
+        tab:CreateToggle({
+            Name = "Auto Load",
+            CurrentValue = config.AutoLoad,
+            NoConfig = true,
+            Callback = function(value)
+                config.AutoLoad = value == true
+                self:_SaveConfigMeta()
+                setConfigStatus(
+                    config.AutoLoad
+                        and ("Auto Load ON • " .. config.Selected)
+                        or "Auto Load OFF"
+                )
+            end,
+        })
+
+        tab:CreateLabel("Auto Load restores the selected profile next run.")
+        tab:CreateLabel("Auto Save writes changes after you adjust any saved control.")
+
+        if next(config.LoadedValues) ~= nil and config.AutoLoad then
+            task.defer(function()
+                PuckUI:Notify({
+                    Title = "Configs",
+                    Content = "Auto-loaded " .. config.Selected,
+                    Duration = 2.5,
+                })
             end)
         end
 
@@ -2038,6 +2670,38 @@ function PuckUI:CreateWindow(settings)
         if input.UserInputType == Enum.UserInputType.Keyboard
             and input.KeyCode == window.ToggleKeyCode then
             window:Toggle()
+        end
+    end)
+
+    -- Config autosave watches control values instead of requiring every game
+    -- script to manually call Save after each callback.
+    task.spawn(function()
+        task.wait(1.0)
+
+        if not config.Available or not config.Enabled then
+            return
+        end
+
+        config.Ready = true
+        config.LastFingerprint = window:_ConfigFingerprint()
+
+        -- If Auto Save is enabled and the selected profile does not exist yet,
+        -- create it from the script's current defaults/loaded state.
+        if config.AutoSave and not FileAPI.IsFile(configFilePath(config.Selected)) then
+            window:_WriteConfig(config.Selected, false)
+        end
+
+        while window.ScreenGui and window.ScreenGui.Parent do
+            if config.AutoSave and not config.Applying then
+                local fingerprint = window:_ConfigFingerprint()
+
+                if fingerprint ~= ""
+                    and fingerprint ~= config.LastFingerprint then
+                    window:_WriteConfig(config.Selected, false)
+                end
+            end
+
+            task.wait(0.5)
         end
     end)
 
