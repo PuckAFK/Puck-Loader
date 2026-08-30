@@ -280,8 +280,8 @@ local gui = create("ScreenGui", {
 
 getGuiParent(gui)
 
-local WINDOW_WIDTH = 452
-local WINDOW_HEIGHT = 244
+local WINDOW_WIDTH = 480
+local WINDOW_HEIGHT = 260
 local targetCardSize = UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT)
 
 local shadow = create("Frame", {
@@ -474,18 +474,6 @@ local titleLabel = codeLabel(
 titleLabel.Position = UDim2.fromOffset(6, 0)
 titleLabel.Size = UDim2.new(1, -92, 1, 0)
 
-local versionLabel = codeLabel(
-    titleBar,
-    "loader v4.1",
-    10,
-    THEME.DimText,
-    11
-)
-versionLabel.AnchorPoint = Vector2.new(1, 0)
-versionLabel.Position = UDim2.new(1, -28, 0, 0)
-versionLabel.Size = UDim2.fromOffset(72, 24)
-versionLabel.TextXAlignment = Enum.TextXAlignment.Right
-
 local cancelled = false
 
 local closeButton = create("TextButton", {
@@ -523,7 +511,7 @@ end)
 local dragHandle = create("TextButton", {
     Name = "DragHandle",
     Position = UDim2.fromOffset(0, 0),
-    Size = UDim2.new(1, -106, 1, 0),
+    Size = UDim2.new(1, -42, 1, 0),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     AutoButtonColor = false,
@@ -589,60 +577,10 @@ local accentTop = create("Frame", {
     Parent = card,
 })
 
-local tabBar = create("Frame", {
-    Name = "TabBar",
-    Position = UDim2.fromOffset(2, 27),
-    Size = UDim2.new(1, -4, 0, 22),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ZIndex = 8,
-    Parent = card,
-})
-
-local tabText = codeLabel(
-    tabBar,
-    "loader",
-    11,
-    THEME.BrightText,
-    10
-)
-tabText.Position = UDim2.fromOffset(8, 0)
-tabText.Size = UDim2.fromOffset(60, 22)
-
-local tabHighlight = create("Frame", {
-    Position = UDim2.fromOffset(8, 20),
-    Size = UDim2.fromOffset(38, 1),
-    BackgroundColor3 = THEME.Accent,
-    BorderSizePixel = 0,
-    ZIndex = 11,
-    Parent = tabBar,
-})
-
-create("Frame", {
-    Name = "TabSeparatorDark",
-    Position = UDim2.fromOffset(2, 49),
-    Size = UDim2.new(1, -4, 0, 1),
-    BackgroundColor3 = THEME.BorderDark,
-    BorderSizePixel = 0,
-    ZIndex = 8,
-    Parent = card,
-})
-
-create("Frame", {
-    Name = "TabSeparator",
-    Position = UDim2.fromOffset(2, 50),
-    Size = UDim2.new(1, -4, 0, 1),
-    BackgroundColor3 = THEME.Border,
-    BackgroundTransparency = 0.45,
-    BorderSizePixel = 0,
-    ZIndex = 8,
-    Parent = card,
-})
-
 local contentHost = create("Frame", {
     Name = "ContentHost",
-    Position = UDim2.fromOffset(8, 56),
-    Size = UDim2.new(1, -16, 1, -64),
+    Position = UDim2.fromOffset(8, 34),
+    Size = UDim2.new(1, -16, 1, -42),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ClipsDescendants = true,
@@ -670,16 +608,6 @@ create("Frame", {
     Parent = section,
 })
 
-local sectionTitle = codeLabel(
-    section,
-    "script loader",
-    11,
-    THEME.Text,
-    10
-)
-sectionTitle.Position = UDim2.fromOffset(8, 5)
-sectionTitle.Size = UDim2.new(1, -16, 0, 16)
-
 local status = codeLabel(
     section,
     "Starting...",
@@ -687,20 +615,8 @@ local status = codeLabel(
     THEME.BrightText,
     11
 )
-status.Position = UDim2.fromOffset(12, 28)
-status.Size = UDim2.new(1, -92, 0, 22)
-
-local percentLabel = codeLabel(
-    section,
-    "0%",
-    11,
-    THEME.DimText,
-    11
-)
-percentLabel.AnchorPoint = Vector2.new(1, 0)
-percentLabel.Position = UDim2.new(1, -12, 0, 30)
-percentLabel.Size = UDim2.fromOffset(62, 18)
-percentLabel.TextXAlignment = Enum.TextXAlignment.Right
+status.Position = UDim2.fromOffset(14, 28)
+status.Size = UDim2.new(1, -28, 0, 28)
 
 local detail = codeLabel(
     section,
@@ -709,13 +625,14 @@ local detail = codeLabel(
     THEME.DimText,
     11
 )
-detail.Position = UDim2.fromOffset(12, 50)
-detail.Size = UDim2.new(1, -24, 0, 18)
+detail.Position = UDim2.fromOffset(14, 62)
+detail.Size = UDim2.new(1, -28, 0, 20)
+detail.TextXAlignment = Enum.TextXAlignment.Center
 detail.TextTruncate = Enum.TextTruncate.AtEnd
 
 local progressTrack = create("Frame", {
-    Position = UDim2.fromOffset(12, 73),
-    Size = UDim2.new(1, -24, 0, 14),
+    Position = UDim2.fromOffset(28, 102),
+    Size = UDim2.new(1, -56, 0, 12),
     BackgroundColor3 = THEME.Element,
     BorderColor3 = THEME.BorderDark,
     BorderSizePixel = 1,
@@ -742,77 +659,6 @@ local progressFill = create("Frame", {
     Parent = progressTrack,
 })
 
-local gameRow = create("Frame", {
-    Position = UDim2.fromOffset(12, 98),
-    Size = UDim2.new(1, -24, 0, 26),
-    BackgroundColor3 = THEME.Element,
-    BorderColor3 = THEME.BorderDark,
-    BorderSizePixel = 1,
-    ZIndex = 10,
-    Parent = section,
-})
-
-create("Frame", {
-    Position = UDim2.fromOffset(1, 1),
-    Size = UDim2.new(1, -2, 1, -2),
-    BackgroundTransparency = 1,
-    BorderColor3 = THEME.Border,
-    BorderSizePixel = 1,
-    ZIndex = 11,
-    Parent = gameRow,
-})
-
-local gameKey = codeLabel(gameRow, "game", 10, THEME.DimText, 12)
-gameKey.Position = UDim2.fromOffset(8, 0)
-gameKey.Size = UDim2.fromOffset(48, 26)
-
-local gameValue = codeLabel(gameRow, "detecting...", 11, THEME.Text, 12)
-gameValue.Position = UDim2.fromOffset(58, 0)
-gameValue.Size = UDim2.new(1, -66, 1, 0)
-gameValue.TextXAlignment = Enum.TextXAlignment.Right
-gameValue.TextTruncate = Enum.TextTruncate.AtEnd
-
-local sourceRow = create("Frame", {
-    Position = UDim2.fromOffset(12, 130),
-    Size = UDim2.new(1, -24, 0, 26),
-    BackgroundColor3 = THEME.Element,
-    BorderColor3 = THEME.BorderDark,
-    BorderSizePixel = 1,
-    ZIndex = 10,
-    Parent = section,
-})
-
-create("Frame", {
-    Position = UDim2.fromOffset(1, 1),
-    Size = UDim2.new(1, -2, 1, -2),
-    BackgroundTransparency = 1,
-    BorderColor3 = THEME.Border,
-    BorderSizePixel = 1,
-    ZIndex = 11,
-    Parent = sourceRow,
-})
-
-local sourceKey = codeLabel(sourceRow, "source", 10, THEME.DimText, 12)
-sourceKey.Position = UDim2.fromOffset(8, 0)
-sourceKey.Size = UDim2.fromOffset(48, 26)
-
-local sourceValue = codeLabel(sourceRow, "waiting...", 10, THEME.DimText, 12)
-sourceValue.Position = UDim2.fromOffset(58, 0)
-sourceValue.Size = UDim2.new(1, -66, 1, 0)
-sourceValue.TextXAlignment = Enum.TextXAlignment.Right
-sourceValue.TextTruncate = Enum.TextTruncate.AtEnd
-
-local footerText = codeLabel(
-    section,
-    "PuckUI visual shell • automatic PlaceId / universe routing • Anti-AFK",
-    9,
-    THEME.DimText,
-    10
-)
-footerText.Position = UDim2.fromOffset(12, 162)
-footerText.Size = UDim2.new(1, -24, 0, 12)
-footerText.TextXAlignment = Enum.TextXAlignment.Center
-
 local progressValue = 0
 local changingStatus = false
 
@@ -832,8 +678,6 @@ local function setProgress(value)
         Enum.EasingDirection.Out
     )
 
-    percentLabel.Text =
-        tostring(math.floor(value * 100 + 0.5)) .. "%"
 end
 
 local function setStatus(mainText, detailText, color)
@@ -893,7 +737,6 @@ local function fail(stage, message)
 
     progressFill.BackgroundColor3 = THEME.Danger
     accentTop.BackgroundColor3 = THEME.Danger
-    tabHighlight.BackgroundColor3 = THEME.Danger
 
     setStatus(
         stage or "Loader Error",
@@ -967,13 +810,11 @@ local function chooseRouteManually(placeId)
     )
     setProgress(0.30)
 
-    gameValue.Text = "PlaceId " .. tostring(placeId)
-    sourceValue.Text = "manual selection"
 
     local picker = create("CanvasGroup", {
         Name = "ManualDropdown",
-        Position = UDim2.fromOffset(12, 95),
-        Size = UDim2.new(1, -24, 0, 72),
+        Position = UDim2.fromOffset(28, 132),
+        Size = UDim2.new(1, -56, 0, 44),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         GroupTransparency = 1,
@@ -981,9 +822,6 @@ local function chooseRouteManually(placeId)
         Parent = section,
     })
 
-    gameRow.Visible = false
-    sourceRow.Visible = false
-    footerText.Visible = false
 
     local selector = create("TextButton", {
         Name = "Selector",
@@ -1094,13 +932,13 @@ local function chooseRouteManually(placeId)
             tween(
                 card,
                 0.18,
-                {Size = UDim2.fromOffset(WINDOW_WIDTH, 388)}
+                {Size = UDim2.fromOffset(WINDOW_WIDTH, 400)}
             )
 
             tween(
                 shadow,
                 0.18,
-                {Size = UDim2.fromOffset(WINDOW_WIDTH, 388)}
+                {Size = UDim2.fromOffset(WINDOW_WIDTH, 400)}
             )
 
             tween(
@@ -1224,8 +1062,6 @@ local function chooseRouteManually(placeId)
             }
 
             selector.Text = "  " .. selectedRoute.name
-            gameValue.Text = selectedRoute.name
-            sourceValue.Text = selectedRoute.source
 
             setStatus(
                 "Script Selected",
@@ -1266,21 +1102,15 @@ local function chooseRouteManually(placeId)
         picker:Destroy()
     end
 
-    gameRow.Visible = true
-    sourceRow.Visible = true
-    footerText.Visible = true
 
     card.Size = targetCardSize
     shadow.Size = targetCardSize
 
-    gameValue.Text = selectedRoute.name
-    sourceValue.Text = selectedRoute.source
 
     return selectedRoute
 end
 
--- Entrance animation. Same restrained PuckUI motion instead of the old
--- oversized rounded-card spring animation.
+-- Restrained PuckUI entrance animation.
 card.Size = UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT - 14)
 shadow.Size = card.Size
 
@@ -1312,9 +1142,7 @@ task.spawn(function()
 
     if cancelled then return end
 
-    setStatus("Checking Game...", "Waiting for Roblox to finish loading")
-    gameValue.Text = "detecting..."
-    sourceValue.Text = "waiting..."
+    setStatus("Checking Game...", "Detecting supported script")
     setProgress(0.08)
 
     if not game:IsLoaded() then
@@ -1368,15 +1196,13 @@ task.spawn(function()
     -- compiled, and executed. No preview/fake substitute is used.
     if cancelled then return end
 
-    gameValue.Text = route.name
-    sourceValue.Text = route.source
 
     setStatus("Script Selected", route.name)
     setProgress(0.42)
     task.wait(0.18)
 
     setStatus("Connecting to Source...", route.source)
-    detail.Text = route.name .. " • " .. route.source
+    detail.Text = route.name
     setProgress(0.52)
 
     local downloadOk, source = fetchSource(route.url)
@@ -1386,7 +1212,7 @@ task.spawn(function()
         return
     end
 
-    setStatus("Downloading Script...", string.format("%s • %.1f KB", route.name, #source / 1024))
+    setStatus("Downloading Script...", route.name)
     setProgress(0.68)
     task.wait(0.20)
 
@@ -1395,7 +1221,7 @@ task.spawn(function()
         return
     end
 
-    setStatus("Checking Compiler...", "Preparing " .. route.name)
+    setStatus("Checking Compiler...", route.name)
     setProgress(0.78)
     task.wait(0.15)
 
@@ -1405,7 +1231,7 @@ task.spawn(function()
         return
     end
 
-    setStatus("Loading Script...", "Compiling downloaded source")
+    setStatus("Loading Script...", route.name)
     setProgress(0.88)
 
     local chunk, compileError = compiler(source)
@@ -1436,7 +1262,6 @@ task.spawn(function()
     setProgress(1)
     progressFill.BackgroundColor3 = THEME.Success
     accentTop.BackgroundColor3 = THEME.Success
-    tabHighlight.BackgroundColor3 = THEME.Success
     setStatus("Loaded Successfully", route.name, THEME.BrightText)
 
     task.wait(0.75)
