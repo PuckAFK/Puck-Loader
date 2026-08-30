@@ -579,8 +579,9 @@ local accentTop = create("Frame", {
 
 local contentHost = create("Frame", {
     Name = "ContentHost",
-    Position = UDim2.fromOffset(8, 34),
-    Size = UDim2.new(1, -16, 1, -42),
+    AnchorPoint = Vector2.new(0.5, 0),
+    Position = UDim2.new(0.5, 0, 0, 58),
+    Size = UDim2.new(1, -48, 0, 132),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ClipsDescendants = true,
@@ -615,8 +616,9 @@ local status = codeLabel(
     THEME.BrightText,
     11
 )
-status.Position = UDim2.fromOffset(14, 28)
-status.Size = UDim2.new(1, -28, 0, 28)
+status.Position = UDim2.fromOffset(14, 22)
+status.Size = UDim2.new(1, -28, 0, 30)
+status.TextXAlignment = Enum.TextXAlignment.Center
 
 local detail = codeLabel(
     section,
@@ -625,14 +627,15 @@ local detail = codeLabel(
     THEME.DimText,
     11
 )
-detail.Position = UDim2.fromOffset(14, 62)
-detail.Size = UDim2.new(1, -28, 0, 20)
+detail.Position = UDim2.fromOffset(14, 53)
+detail.Size = UDim2.new(1, -28, 0, 18)
 detail.TextXAlignment = Enum.TextXAlignment.Center
 detail.TextTruncate = Enum.TextTruncate.AtEnd
 
 local progressTrack = create("Frame", {
-    Position = UDim2.fromOffset(28, 102),
-    Size = UDim2.new(1, -56, 0, 12),
+    AnchorPoint = Vector2.new(0.5, 0),
+    Position = UDim2.new(0.5, 0, 0, 83),
+    Size = UDim2.new(1, -84, 0, 10),
     BackgroundColor3 = THEME.Element,
     BorderColor3 = THEME.BorderDark,
     BorderSizePixel = 1,
@@ -658,6 +661,18 @@ local progressFill = create("Frame", {
     ZIndex = 10,
     Parent = progressTrack,
 })
+
+
+local autoText = codeLabel(
+    section,
+    "automatic script detection",
+    9,
+    THEME.DimText,
+    10
+)
+autoText.Position = UDim2.fromOffset(14, 102)
+autoText.Size = UDim2.new(1, -28, 0, 14)
+autoText.TextXAlignment = Enum.TextXAlignment.Center
 
 local progressValue = 0
 local changingStatus = false
@@ -697,35 +712,36 @@ local function setStatus(mainText, detailText, color)
 
     changingStatus = true
 
-    local fade = tween(
-        status,
-        0.07,
-        {TextTransparency = 1},
-        Enum.EasingStyle.Quad,
-        Enum.EasingDirection.Out
-    )
+    local mainValue = tostring(mainText or "PuckAFK")
+    local detailValue = tostring(detailText or "")
 
-    tween(
-        detail,
-        0.07,
-        {TextTransparency = 1},
-        Enum.EasingStyle.Quad,
-        Enum.EasingDirection.Out
-    )
+    -- Avoid needlessly fading when only the stage/detail changes. This makes
+    -- the very short loader feel calmer and stops text flicker.
+    local mainChanged = status.Text ~= mainValue
 
-    fade.Completed:Wait()
+    if mainChanged then
+        local fade = tween(
+            status,
+            0.06,
+            {TextTransparency = 1},
+            Enum.EasingStyle.Quad,
+            Enum.EasingDirection.Out
+        )
+        fade.Completed:Wait()
+    end
 
     if cancelled or not status.Parent then
         changingStatus = false
         return
     end
 
-    status.Text = mainText or "Loading..."
+    status.Text = mainValue
     status.TextColor3 = color or THEME.BrightText
-    detail.Text = detailText or ""
+    detail.Text = detailValue
 
-    tween(status, 0.09, {TextTransparency = 0})
-    tween(detail, 0.09, {TextTransparency = 0})
+    if mainChanged then
+        tween(status, 0.08, {TextTransparency = 0})
+    end
 
     changingStatus = false
 end
@@ -737,10 +753,14 @@ local function fail(stage, message)
 
     progressFill.BackgroundColor3 = THEME.Danger
     accentTop.BackgroundColor3 = THEME.Danger
+    autoText.Text = "loader error"
+    autoText.TextColor3 = THEME.Danger
 
     setStatus(
-        stage or "Loader Error",
-        tostring(message or "Unknown error"),
+        "Load Failed",
+        tostring(stage or "Loader Error")
+            .. " • "
+            .. tostring(message or "Unknown error"),
         THEME.BrightText
     )
 end
@@ -805,16 +825,16 @@ local function chooseRouteManually(placeId)
     end
 
     setStatus(
-        "Game Not Detected",
-        "Choose a supported PuckAFK script manually"
+        "Choose a Script",
+        "Automatic detection did not find this game"
     )
     setProgress(0.30)
 
 
     local picker = create("CanvasGroup", {
         Name = "ManualDropdown",
-        Position = UDim2.fromOffset(28, 132),
-        Size = UDim2.new(1, -56, 0, 44),
+        Position = UDim2.fromOffset(28, 100),
+        Size = UDim2.new(1, -56, 0, 34),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         GroupTransparency = 1,
@@ -932,19 +952,19 @@ local function chooseRouteManually(placeId)
             tween(
                 card,
                 0.18,
-                {Size = UDim2.fromOffset(WINDOW_WIDTH, 400)}
+                {Size = UDim2.fromOffset(WINDOW_WIDTH, 365)}
             )
 
             tween(
                 shadow,
                 0.18,
-                {Size = UDim2.fromOffset(WINDOW_WIDTH, 400)}
+                {Size = UDim2.fromOffset(WINDOW_WIDTH, 365)}
             )
 
             tween(
                 picker,
                 0.18,
-                {Size = UDim2.new(1, -24, 0, 212)}
+                {Size = UDim2.new(1, -56, 0, 196)}
             )
         else
             arrow.Text = "v"
@@ -965,7 +985,7 @@ local function chooseRouteManually(placeId)
             tween(
                 picker,
                 0.18,
-                {Size = UDim2.new(1, -24, 0, 72)}
+                {Size = UDim2.new(1, -56, 0, 34)}
             )
         end
     end
@@ -1064,8 +1084,8 @@ local function chooseRouteManually(placeId)
             selector.Text = "  " .. selectedRoute.name
 
             setStatus(
-                "Script Selected",
-                selectedRoute.name
+                selectedRoute.name,
+                "Preparing script..."
             )
 
             item.BackgroundColor3 = THEME.ElementHover
@@ -1142,7 +1162,7 @@ task.spawn(function()
 
     if cancelled then return end
 
-    setStatus("Checking Game...", "Detecting supported script")
+    setStatus("PuckAFK Hub", "Detecting game...")
     setProgress(0.08)
 
     if not game:IsLoaded() then
@@ -1176,8 +1196,8 @@ task.spawn(function()
     local route = UNIVERSE_ROUTES[universeId] or ROUTES[placeId]
 
     setStatus(
-        "Finding Script...",
-        "GameId: " .. tostring(universeId) .. " • PlaceId: " .. tostring(placeId)
+        "PuckAFK Hub",
+        "Finding matching script..."
     )
     setProgress(0.30)
     task.wait(0.20)
@@ -1197,12 +1217,11 @@ task.spawn(function()
     if cancelled then return end
 
 
-    setStatus("Script Selected", route.name)
+    setStatus(route.name, "Script found")
     setProgress(0.42)
     task.wait(0.18)
 
-    setStatus("Connecting to Source...", route.source)
-    detail.Text = route.name
+    setStatus(route.name, "Connecting...")
     setProgress(0.52)
 
     local downloadOk, source = fetchSource(route.url)
@@ -1212,7 +1231,7 @@ task.spawn(function()
         return
     end
 
-    setStatus("Downloading Script...", route.name)
+    setStatus(route.name, "Downloading...")
     setProgress(0.68)
     task.wait(0.20)
 
@@ -1221,7 +1240,7 @@ task.spawn(function()
         return
     end
 
-    setStatus("Checking Compiler...", route.name)
+    setStatus(route.name, "Preparing...")
     setProgress(0.78)
     task.wait(0.15)
 
@@ -1231,7 +1250,7 @@ task.spawn(function()
         return
     end
 
-    setStatus("Loading Script...", route.name)
+    setStatus(route.name, "Compiling...")
     setProgress(0.88)
 
     local chunk, compileError = compiler(source)
@@ -1240,7 +1259,7 @@ task.spawn(function()
         return
     end
 
-    setStatus("Launching...", route.name)
+    setStatus(route.name, "Launching...")
     setProgress(0.96)
 
     local runtimeFinished = false
@@ -1262,7 +1281,9 @@ task.spawn(function()
     setProgress(1)
     progressFill.BackgroundColor3 = THEME.Success
     accentTop.BackgroundColor3 = THEME.Success
-    setStatus("Loaded Successfully", route.name, THEME.BrightText)
+    autoText.Text = "ready"
+    autoText.TextColor3 = THEME.Success
+    setStatus(route.name, "Loaded successfully", THEME.BrightText)
 
     task.wait(0.75)
 
