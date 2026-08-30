@@ -280,8 +280,8 @@ local gui = create("ScreenGui", {
 
 getGuiParent(gui)
 
-local WINDOW_WIDTH = 480
-local WINDOW_HEIGHT = 260
+local WINDOW_WIDTH = 452
+local WINDOW_HEIGHT = 244
 local targetCardSize = UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT)
 
 local shadow = create("Frame", {
@@ -476,7 +476,7 @@ titleLabel.Size = UDim2.new(1, -92, 1, 0)
 
 local versionLabel = codeLabel(
     titleBar,
-    "loader v4.0",
+    "loader v4.1",
     10,
     THEME.DimText,
     11
@@ -641,8 +641,8 @@ create("Frame", {
 
 local contentHost = create("Frame", {
     Name = "ContentHost",
-    Position = UDim2.fromOffset(8, 58),
-    Size = UDim2.new(1, -16, 1, -66),
+    Position = UDim2.fromOffset(8, 56),
+    Size = UDim2.new(1, -16, 1, -64),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ClipsDescendants = true,
@@ -683,12 +683,12 @@ sectionTitle.Size = UDim2.new(1, -16, 0, 16)
 local status = codeLabel(
     section,
     "Starting...",
-    14,
+    13,
     THEME.BrightText,
     11
 )
-status.Position = UDim2.fromOffset(12, 31)
-status.Size = UDim2.new(1, -98, 0, 24)
+status.Position = UDim2.fromOffset(12, 28)
+status.Size = UDim2.new(1, -92, 0, 22)
 
 local percentLabel = codeLabel(
     section,
@@ -698,7 +698,7 @@ local percentLabel = codeLabel(
     11
 )
 percentLabel.AnchorPoint = Vector2.new(1, 0)
-percentLabel.Position = UDim2.new(1, -12, 0, 34)
+percentLabel.Position = UDim2.new(1, -12, 0, 30)
 percentLabel.Size = UDim2.fromOffset(62, 18)
 percentLabel.TextXAlignment = Enum.TextXAlignment.Right
 
@@ -709,13 +709,13 @@ local detail = codeLabel(
     THEME.DimText,
     11
 )
-detail.Position = UDim2.fromOffset(12, 55)
+detail.Position = UDim2.fromOffset(12, 50)
 detail.Size = UDim2.new(1, -24, 0, 18)
 detail.TextTruncate = Enum.TextTruncate.AtEnd
 
 local progressTrack = create("Frame", {
-    Position = UDim2.fromOffset(12, 82),
-    Size = UDim2.new(1, -24, 0, 16),
+    Position = UDim2.fromOffset(12, 73),
+    Size = UDim2.new(1, -24, 0, 14),
     BackgroundColor3 = THEME.Element,
     BorderColor3 = THEME.BorderDark,
     BorderSizePixel = 1,
@@ -743,8 +743,8 @@ local progressFill = create("Frame", {
 })
 
 local gameRow = create("Frame", {
-    Position = UDim2.fromOffset(12, 111),
-    Size = UDim2.new(1, -24, 0, 28),
+    Position = UDim2.fromOffset(12, 98),
+    Size = UDim2.new(1, -24, 0, 26),
     BackgroundColor3 = THEME.Element,
     BorderColor3 = THEME.BorderDark,
     BorderSizePixel = 1,
@@ -764,7 +764,7 @@ create("Frame", {
 
 local gameKey = codeLabel(gameRow, "game", 10, THEME.DimText, 12)
 gameKey.Position = UDim2.fromOffset(8, 0)
-gameKey.Size = UDim2.fromOffset(48, 28)
+gameKey.Size = UDim2.fromOffset(48, 26)
 
 local gameValue = codeLabel(gameRow, "detecting...", 11, THEME.Text, 12)
 gameValue.Position = UDim2.fromOffset(58, 0)
@@ -773,8 +773,8 @@ gameValue.TextXAlignment = Enum.TextXAlignment.Right
 gameValue.TextTruncate = Enum.TextTruncate.AtEnd
 
 local sourceRow = create("Frame", {
-    Position = UDim2.fromOffset(12, 145),
-    Size = UDim2.new(1, -24, 0, 28),
+    Position = UDim2.fromOffset(12, 130),
+    Size = UDim2.new(1, -24, 0, 26),
     BackgroundColor3 = THEME.Element,
     BorderColor3 = THEME.BorderDark,
     BorderSizePixel = 1,
@@ -794,7 +794,7 @@ create("Frame", {
 
 local sourceKey = codeLabel(sourceRow, "source", 10, THEME.DimText, 12)
 sourceKey.Position = UDim2.fromOffset(8, 0)
-sourceKey.Size = UDim2.fromOffset(48, 28)
+sourceKey.Size = UDim2.fromOffset(48, 26)
 
 local sourceValue = codeLabel(sourceRow, "waiting...", 10, THEME.DimText, 12)
 sourceValue.Position = UDim2.fromOffset(58, 0)
@@ -809,7 +809,7 @@ local footerText = codeLabel(
     THEME.DimText,
     10
 )
-footerText.Position = UDim2.fromOffset(12, 177)
+footerText.Position = UDim2.fromOffset(12, 162)
 footerText.Size = UDim2.new(1, -24, 0, 12)
 footerText.TextXAlignment = Enum.TextXAlignment.Center
 
@@ -972,7 +972,7 @@ local function chooseRouteManually(placeId)
 
     local picker = create("CanvasGroup", {
         Name = "ManualDropdown",
-        Position = UDim2.fromOffset(12, 108),
+        Position = UDim2.fromOffset(12, 95),
         Size = UDim2.new(1, -24, 0, 72),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
@@ -1026,7 +1026,7 @@ local function chooseRouteManually(placeId)
     local menu = create("ScrollingFrame", {
         Name = "Options",
         Position = UDim2.fromOffset(0, 36),
-        Size = UDim2.new(1, 0, 0, 170),
+        Size = UDim2.new(1, 0, 0, 154),
         BackgroundColor3 = THEME.Section,
         BorderColor3 = THEME.BorderDark,
         BorderSizePixel = 1,
@@ -1094,13 +1094,13 @@ local function chooseRouteManually(placeId)
             tween(
                 card,
                 0.18,
-                {Size = UDim2.fromOffset(WINDOW_WIDTH, 420)}
+                {Size = UDim2.fromOffset(WINDOW_WIDTH, 388)}
             )
 
             tween(
                 shadow,
                 0.18,
-                {Size = UDim2.fromOffset(WINDOW_WIDTH, 420)}
+                {Size = UDim2.fromOffset(WINDOW_WIDTH, 388)}
             )
 
             tween(
