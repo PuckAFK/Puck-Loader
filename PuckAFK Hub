@@ -6,16 +6,113 @@
       Chicken Farm           : 137233438285284
       SevenM Hood            : 131558436575033
       +1 Speed Monkey Escape : 114697347887839
+      The Lost Front         : 102871156420149
+      +1 Power Per Click     : 74889851913797
+      Sniper Arena universe  : GameId 9534705677 (all current/future subplaces)
+      Murder Mystery 2       : 142823291
+      Build a Gun Army        : 134162299584012
 
     One free loader for all supported PuckAFK scripts.
-    Includes automatic PlaceId detection and a manual script dropdown.
+    Includes automatic PlaceId + universe detection, a manual script dropdown, and universal anti-AFK.
 ]]
+
+local ENV = (getgenv and getgenv()) or _G
+
+-- Shared persistent config defaults for every PuckAFK script launched by the hub.
+ENV.__PUCKAFK_CONFIG_SHARED_STATE =
+    ENV.__PUCKAFK_CONFIG_SHARED_STATE
+    or {
+        Root = "PuckAFK/Configs",
+        AutoSaveDefault = true,
+        AutoLoadDefault = true,
+    }
 
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
+
+
+-- =========================
+-- Universal Anti-AFK
+-- =========================
+
+local function getGlobalEnvironment()
+    if type(getgenv) == "function" then
+        local ok, env = pcall(getgenv)
+        if ok and type(env) == "table" then
+            return env
+        end
+    end
+    return _G
+end
+
+local GLOBAL_ENV = getGlobalEnvironment()
+local ANTI_AFK_KEY = "__PUCKAFK_LOADER_ANTI_AFK"
+
+local function enableAntiAFK()
+    local oldState = GLOBAL_ENV[ANTI_AFK_KEY]
+    if type(oldState) == "table" and oldState.Connection then
+        pcall(function()
+            oldState.Connection:Disconnect()
+        end)
+    end
+
+    local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
+    local connection = player.Idled:Connect(function()
+        pcall(function()
+            VirtualUser:CaptureController()
+        end)
+
+        pcall(function()
+            VirtualUser:ClickButton2(Vector2.new(0, 0))
+        end)
+
+        pcall(function()
+            local camera = workspace.CurrentCamera
+            local cameraCFrame = camera and camera.CFrame or CFrame.new()
+            VirtualUser:Button2Down(Vector2.new(0, 0), cameraCFrame)
+            task.wait(0.05)
+            VirtualUser:Button2Up(Vector2.new(0, 0), cameraCFrame)
+        end)
+    end)
+
+    GLOBAL_ENV[ANTI_AFK_KEY] = {
+        Connection = connection,
+        Enabled = true,
+    }
+end
+
+enableAntiAFK()
+
+local SNIPER_ARENA_ROUTE = {
+    name = "Sniper Arena",
+    source = "github.com/PuckAFK/Sniper-Arena",
+    url = "https://raw.githubusercontent.com/PuckAFK/Sniper-Arena/main/Sniper%20Arena.lua",
+}
+
+local UNIVERSE_ROUTES = {
+    -- Every place/subplace in the Sniper Arena universe, including future ones.
+    [9534705677] = SNIPER_ARENA_ROUTE,
+}
 
 local ROUTES = {
+    [134162299584012] = {
+        name = "Build a Gun Army",
+        source = "puckafk.site/scripts/build-a-gun-army/autofarm.lua",
+        url = "https://puckafk.site/scripts/build-a-gun-army/autofarm.lua",
+    },
+    [142823291] = {
+        name = "Murder Mystery 2",
+        source = "puckafk.site/scripts/murder-mystery-2/mm2.lua",
+        url = "https://puckafk.site/scripts/murder-mystery-2/mm2.lua",
+    },
+    [74889851913797] = {
+        name = "+1 Power Per Click",
+        source = "github.com/PuckAFK/-1-Power-Per-Click",
+        url = "https://raw.githubusercontent.com/PuckAFK/-1-Power-Per-Click/main/%2B1%20Power%20Per%20Click.lua",
+    },
     [128481067661991] = {
         name = "Get Rich ASAP",
         source = "github.com/PuckAFK/Get-rich-asap",
@@ -36,251 +133,801 @@ local ROUTES = {
         source = "github.com/PuckAFK/1-Speed-Monkey-Escape",
         url = "https://raw.githubusercontent.com/PuckAFK/1-Speed-Monkey-Escape/main/1%20Speed%20Monkey%20Escape.lua",
     },
+    [102871156420149] = {
+        name = "The Lost Front",
+        source = "github.com/PuckAFK/The-Lost-Front",
+        url = "https://raw.githubusercontent.com/PuckAFK/The-Lost-Front/main/The%20Lost%20Front.lua",
+    },
+    [122446657157717] = SNIPER_ARENA_ROUTE,
+    [119259569670784] = SNIPER_ARENA_ROUTE,
 }
 
 local THEME = {
-    panel = Color3.fromRGB(16, 20, 17),
-    stroke = Color3.fromRGB(77, 91, 80),
-    text = Color3.fromRGB(245, 247, 245),
-    muted = Color3.fromRGB(126, 137, 129),
-    track = Color3.fromRGB(49, 58, 51),
-    fill = Color3.fromRGB(245, 247, 245),
-    error = Color3.fromRGB(255, 118, 118),
-    success = Color3.fromRGB(170, 255, 185),
+    -- Exact PuckUI v3.4 visual language.
+    Main = Color3.fromRGB(12, 12, 12),
+    Top = Color3.fromRGB(12, 12, 12),
+    Tab = Color3.fromRGB(12, 12, 12),
+    Section = Color3.fromRGB(18, 18, 18),
+    SectionInner = Color3.fromRGB(18, 18, 18),
+    Element = Color3.fromRGB(24, 24, 24),
+    ElementHover = Color3.fromRGB(32, 32, 32),
+    Border = Color3.fromRGB(45, 45, 45),
+    BorderDark = Color3.fromRGB(5, 5, 5),
+    Text = Color3.fromRGB(170, 170, 170),
+    DimText = Color3.fromRGB(100, 100, 100),
+    BrightText = Color3.fromRGB(230, 230, 230),
+    Accent = Color3.fromRGB(0, 95, 255),
+    Danger = Color3.fromRGB(180, 58, 64),
+    Success = Color3.fromRGB(48, 145, 78),
 }
 
+local function create(className, properties)
+    local object = Instance.new(className)
+
+    for key, value in pairs(properties or {}) do
+        object[key] = value
+    end
+
+    return object
+end
+
 local function tween(object, duration, properties, style, direction)
-    local info = TweenInfo.new(
-        duration,
-        style or Enum.EasingStyle.Quint,
-        direction or Enum.EasingDirection.Out
+    local animation = TweenService:Create(
+        object,
+        TweenInfo.new(
+            duration or 0.12,
+            style or Enum.EasingStyle.Quad,
+            direction or Enum.EasingDirection.Out
+        ),
+        properties
     )
-    local t = TweenService:Create(object, info, properties)
-    t:Play()
-    return t
+
+    animation:Play()
+    return animation
+end
+
+local function codeLabel(parent, text, size, color, zIndex)
+    return create("TextLabel", {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Text = tostring(text or ""),
+        TextColor3 = color or THEME.Text,
+        TextSize = size or 12,
+        Font = Enum.Font.Code,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center,
+        ZIndex = zIndex or 10,
+        Parent = parent,
+    })
 end
 
 local function getGuiParent(screenGui)
-    if gethui then
-        local ok, result = pcall(gethui)
-        if ok and result then
-            return result
+    -- Match PuckUI: PlayerGui first, then gethui as compatibility fallback.
+    local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
+    local playerGui = player:FindFirstChildOfClass("PlayerGui")
+
+    if not playerGui then
+        playerGui = player:WaitForChild("PlayerGui", 10)
+    end
+
+    if playerGui then
+        local ok = pcall(function()
+            screenGui.Parent = playerGui
+        end)
+
+        if ok and screenGui.Parent == playerGui then
+            return playerGui
         end
     end
 
-    local ok = pcall(function()
-        screenGui.Parent = CoreGui
-    end)
-    if ok and screenGui.Parent then
-        return nil
+    if type(gethui) == "function" then
+        local ok, target = pcall(gethui)
+
+        if ok and target then
+            local parented = pcall(function()
+                screenGui.Parent = target
+            end)
+
+            if parented then
+                return target
+            end
+        end
     end
 
-    local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
-    return player:WaitForChild("PlayerGui")
+    return nil
 end
 
 local function removeOld()
     local possibleParents = {CoreGui}
-
-    if gethui then
-        local ok, result = pcall(gethui)
-        if ok and result then
-            table.insert(possibleParents, result)
-        end
-    end
-
     local player = Players.LocalPlayer
+
     if player then
         local playerGui = player:FindFirstChildOfClass("PlayerGui")
+
         if playerGui then
             table.insert(possibleParents, playerGui)
         end
     end
 
-    for _, parent in ipairs(possibleParents) do
-        local old = parent:FindFirstChild("PuckAFKLoader")
-        if old then
-            pcall(function()
-                old:Destroy()
-            end)
+    if type(gethui) == "function" then
+        local ok, result = pcall(gethui)
+
+        if ok and result then
+            table.insert(possibleParents, result)
         end
+    end
+
+    for _, parent in ipairs(possibleParents) do
+        pcall(function()
+            local old = parent:FindFirstChild("PuckAFKLoader")
+
+            if old then
+                old:Destroy()
+            end
+        end)
     end
 end
 
 removeOld()
 
--- =========================
--- Minimal UI
--- =========================
+local gui = create("ScreenGui", {
+    Name = "PuckAFKLoader",
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    DisplayOrder = 10000,
+})
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "PuckAFKLoader"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+getGuiParent(gui)
 
-local parent = getGuiParent(gui)
-if parent then
-    gui.Parent = parent
+local WINDOW_WIDTH = 480
+local WINDOW_HEIGHT = 260
+local targetCardSize = UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT)
+
+local shadow = create("Frame", {
+    Name = "Shadow",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 4, 0.5, 4),
+    Size = targetCardSize,
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BackgroundTransparency = 0.5,
+    BorderSizePixel = 0,
+    ZIndex = 1,
+    Parent = gui,
+})
+
+local card = create("CanvasGroup", {
+    Name = "LoaderCard",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = targetCardSize,
+    BackgroundColor3 = THEME.Main,
+    BackgroundTransparency = 0,
+    BorderColor3 = THEME.BorderDark,
+    BorderSizePixel = 1,
+    GroupTransparency = 1,
+    Active = true,
+    ZIndex = 2,
+    Parent = gui,
+})
+
+-- -------------------------------------------------------------------------
+-- Procedural PuckUI rose / damask background
+-- -------------------------------------------------------------------------
+
+local roseBackground = create("CanvasGroup", {
+    Name = "RoseBackground",
+    Size = UDim2.fromScale(1, 1),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    GroupTransparency = 0.78,
+    ZIndex = 3,
+    Parent = card,
+})
+
+local roseColor = Color3.fromRGB(255, 255, 255)
+
+local function softPart(parent, position, anchor, size, rotation, transparency)
+    local part = create("Frame", {
+        AnchorPoint = anchor or Vector2.new(0.5, 0.5),
+        Position = position,
+        Size = size,
+        Rotation = rotation or 0,
+        BackgroundColor3 = roseColor,
+        BackgroundTransparency = transparency or 0.84,
+        BorderSizePixel = 0,
+        ZIndex = 3,
+        Parent = parent,
+    })
+
+    create("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = part,
+    })
+
+    return part
 end
 
-local card = Instance.new("CanvasGroup")
-card.Name = "LoaderCard"
-card.AnchorPoint = Vector2.new(0.5, 0.5)
-card.Position = UDim2.fromScale(0.5, 0.5)
-card.Size = UDim2.fromOffset(338, 158)
-card.BackgroundColor3 = THEME.panel
-card.BackgroundTransparency = 0.08
-card.BorderSizePixel = 0
-card.GroupTransparency = 1
-card.Parent = gui
+local function createRose(x, y, scale, tilt)
+    local motif = create("Frame", {
+        Position = UDim2.fromOffset(x - 36, y - 36),
+        Size = UDim2.fromOffset(72, 72),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Rotation = tilt or 0,
+        ZIndex = 3,
+        Parent = roseBackground,
+    })
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 20)
-corner.Parent = card
+    local center = UDim2.fromScale(0.5, 0.43)
 
-local stroke = Instance.new("UIStroke")
-stroke.Color = THEME.stroke
-stroke.Thickness = 1
-stroke.Transparency = 0.42
-stroke.Parent = card
+    for index = 0, 5 do
+        softPart(
+            motif,
+            center,
+            Vector2.new(0.5, 0.92),
+            UDim2.fromOffset(
+                math.max(6, math.floor(13 * scale)),
+                math.max(12, math.floor(24 * scale))
+            ),
+            index * 60,
+            0.78
+        )
+    end
 
-local title = Instance.new("TextLabel")
-title.BackgroundTransparency = 1
-title.AnchorPoint = Vector2.new(0.5, 0)
-title.Position = UDim2.new(0.5, 0, 0, 20)
-title.Size = UDim2.new(1, -32, 0, 24)
-title.Font = Enum.Font.GothamBold
-title.Text = "⚡  PUCKAFK HUB"
-title.TextColor3 = THEME.text
-title.TextSize = 19
-title.TextXAlignment = Enum.TextXAlignment.Center
-title.Parent = card
+    for index = 0, 4 do
+        softPart(
+            motif,
+            center,
+            Vector2.new(0.5, 0.90),
+            UDim2.fromOffset(
+                math.max(4, math.floor(9 * scale)),
+                math.max(8, math.floor(16 * scale))
+            ),
+            index * 72 + 36,
+            0.72
+        )
+    end
 
-local subtitle = Instance.new("TextLabel")
-subtitle.BackgroundTransparency = 1
-subtitle.AnchorPoint = Vector2.new(0.5, 0)
-subtitle.Position = UDim2.new(0.5, 0, 0, 45)
-subtitle.Size = UDim2.new(1, -32, 0, 16)
-subtitle.Font = Enum.Font.GothamMedium
-subtitle.Text = "FREE SCRIPT LOADER"
-subtitle.TextColor3 = THEME.muted
-subtitle.TextSize = 9
-subtitle.TextXAlignment = Enum.TextXAlignment.Center
-subtitle.Parent = card
+    softPart(
+        motif,
+        center,
+        Vector2.new(0.5, 0.5),
+        UDim2.fromOffset(4, 4),
+        0,
+        0.62
+    )
 
-local status = Instance.new("TextLabel")
-status.BackgroundTransparency = 1
-status.AnchorPoint = Vector2.new(0.5, 0)
-status.Position = UDim2.new(0.5, 0, 0, 72)
-status.Size = UDim2.new(1, -34, 0, 20)
-status.Font = Enum.Font.GothamMedium
-status.Text = "Starting..."
-status.TextColor3 = THEME.text
-status.TextSize = 13
-status.TextXAlignment = Enum.TextXAlignment.Center
-status.Parent = card
+    softPart(
+        motif,
+        UDim2.new(0.5, -5, 0.68, 0),
+        Vector2.new(1, 0.5),
+        UDim2.fromOffset(17, 4),
+        -32,
+        0.80
+    )
 
-local progressTrack = Instance.new("Frame")
-progressTrack.AnchorPoint = Vector2.new(0.5, 0)
-progressTrack.Position = UDim2.new(0.5, 0, 0, 103)
-progressTrack.Size = UDim2.new(1, -50, 0, 7)
-progressTrack.BackgroundColor3 = THEME.track
-progressTrack.BackgroundTransparency = 0.12
-progressTrack.BorderSizePixel = 0
-progressTrack.ClipsDescendants = true
-progressTrack.Parent = card
+    softPart(
+        motif,
+        UDim2.new(0.5, 5, 0.71, 0),
+        Vector2.new(0, 0.5),
+        UDim2.fromOffset(17, 4),
+        32,
+        0.80
+    )
 
-local trackCorner = Instance.new("UICorner")
-trackCorner.CornerRadius = UDim.new(1, 0)
-trackCorner.Parent = progressTrack
+    local stem = create("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0.60, 0),
+        Size = UDim2.fromOffset(1, 24),
+        BackgroundColor3 = roseColor,
+        BackgroundTransparency = 0.78,
+        BorderSizePixel = 0,
+        ZIndex = 2,
+        Parent = motif,
+    })
 
-local progressFill = Instance.new("Frame")
-progressFill.Size = UDim2.fromScale(0, 1)
-progressFill.BackgroundColor3 = THEME.fill
-progressFill.BorderSizePixel = 0
-progressFill.Parent = progressTrack
+    create("UIGradient", {
+        Rotation = 90,
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.12),
+            NumberSequenceKeypoint.new(1, 1),
+        }),
+        Parent = stem,
+    })
+end
 
-local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(1, 0)
-fillCorner.Parent = progressFill
+createRose(74, 112, 0.68, -7)
+createRose(220, 176, 0.60, 7)
+createRose(385, 105, 0.64, -5)
+createRose(448, 218, 0.52, 8)
 
-local detail = Instance.new("TextLabel")
-detail.BackgroundTransparency = 1
-detail.AnchorPoint = Vector2.new(0.5, 0)
-detail.Position = UDim2.new(0.5, 0, 0, 120)
-detail.Size = UDim2.new(1, -34, 0, 18)
-detail.Font = Enum.Font.Gotham
-detail.Text = "Preparing free loader..."
-detail.TextColor3 = THEME.muted
-detail.TextSize = 9
-detail.TextXAlignment = Enum.TextXAlignment.Center
+create("Frame", {
+    Name = "InnerBorder",
+    Position = UDim2.fromOffset(1, 1),
+    Size = UDim2.new(1, -2, 1, -2),
+    BackgroundTransparency = 1,
+    BorderColor3 = THEME.Border,
+    BorderSizePixel = 1,
+    ZIndex = 4,
+    Parent = card,
+})
+
+local titleBar = create("Frame", {
+    Name = "TitleBar",
+    Position = UDim2.fromOffset(2, 2),
+    Size = UDim2.new(1, -4, 0, 24),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ZIndex = 8,
+    Parent = card,
+})
+
+local titleLabel = codeLabel(
+    titleBar,
+    "PuckAFK Hub",
+    13,
+    THEME.BrightText,
+    11
+)
+titleLabel.Position = UDim2.fromOffset(6, 0)
+titleLabel.Size = UDim2.new(1, -92, 1, 0)
+
+local versionLabel = codeLabel(
+    titleBar,
+    "loader v4.0",
+    10,
+    THEME.DimText,
+    11
+)
+versionLabel.AnchorPoint = Vector2.new(1, 0)
+versionLabel.Position = UDim2.new(1, -28, 0, 0)
+versionLabel.Size = UDim2.fromOffset(72, 24)
+versionLabel.TextXAlignment = Enum.TextXAlignment.Right
+
+local cancelled = false
+
+local closeButton = create("TextButton", {
+    Name = "Close",
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -2, 0, 2),
+    Size = UDim2.fromOffset(18, 19),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Font = Enum.Font.Code,
+    Text = "x",
+    TextSize = 12,
+    TextColor3 = THEME.DimText,
+    ZIndex = 15,
+    Parent = titleBar,
+})
+
+closeButton.MouseEnter:Connect(function()
+    tween(closeButton, 0.08, {TextColor3 = THEME.BrightText})
+end)
+
+closeButton.MouseLeave:Connect(function()
+    tween(closeButton, 0.08, {TextColor3 = THEME.DimText})
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+    cancelled = true
+
+    pcall(function()
+        gui:Destroy()
+    end)
+end)
+
+local dragHandle = create("TextButton", {
+    Name = "DragHandle",
+    Position = UDim2.fromOffset(0, 0),
+    Size = UDim2.new(1, -106, 1, 0),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Text = "",
+    Active = true,
+    ZIndex = 14,
+    Parent = titleBar,
+})
+
+local dragging = false
+local dragStart = nil
+local startPosition = nil
+
+dragHandle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPosition = card.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging or not dragStart or not startPosition then
+        return
+    end
+
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        local delta = input.Position - dragStart
+
+        card.Position = UDim2.new(
+            startPosition.X.Scale,
+            startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale,
+            startPosition.Y.Offset + delta.Y
+        )
+
+        shadow.Position = UDim2.new(
+            card.Position.X.Scale,
+            card.Position.X.Offset + 4,
+            card.Position.Y.Scale,
+            card.Position.Y.Offset + 4
+        )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+local accentTop = create("Frame", {
+    Name = "AccentTop",
+    Position = UDim2.fromOffset(2, 26),
+    Size = UDim2.new(1, -4, 0, 1),
+    BackgroundColor3 = THEME.Accent,
+    BorderSizePixel = 0,
+    ZIndex = 9,
+    Parent = card,
+})
+
+local tabBar = create("Frame", {
+    Name = "TabBar",
+    Position = UDim2.fromOffset(2, 27),
+    Size = UDim2.new(1, -4, 0, 22),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ZIndex = 8,
+    Parent = card,
+})
+
+local tabText = codeLabel(
+    tabBar,
+    "loader",
+    11,
+    THEME.BrightText,
+    10
+)
+tabText.Position = UDim2.fromOffset(8, 0)
+tabText.Size = UDim2.fromOffset(60, 22)
+
+local tabHighlight = create("Frame", {
+    Position = UDim2.fromOffset(8, 20),
+    Size = UDim2.fromOffset(38, 1),
+    BackgroundColor3 = THEME.Accent,
+    BorderSizePixel = 0,
+    ZIndex = 11,
+    Parent = tabBar,
+})
+
+create("Frame", {
+    Name = "TabSeparatorDark",
+    Position = UDim2.fromOffset(2, 49),
+    Size = UDim2.new(1, -4, 0, 1),
+    BackgroundColor3 = THEME.BorderDark,
+    BorderSizePixel = 0,
+    ZIndex = 8,
+    Parent = card,
+})
+
+create("Frame", {
+    Name = "TabSeparator",
+    Position = UDim2.fromOffset(2, 50),
+    Size = UDim2.new(1, -4, 0, 1),
+    BackgroundColor3 = THEME.Border,
+    BackgroundTransparency = 0.45,
+    BorderSizePixel = 0,
+    ZIndex = 8,
+    Parent = card,
+})
+
+local contentHost = create("Frame", {
+    Name = "ContentHost",
+    Position = UDim2.fromOffset(8, 58),
+    Size = UDim2.new(1, -16, 1, -66),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    ZIndex = 6,
+    Parent = card,
+})
+
+local section = create("Frame", {
+    Name = "LoaderSection",
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = THEME.Section,
+    BorderColor3 = THEME.Border,
+    BorderSizePixel = 1,
+    ZIndex = 7,
+    Parent = contentHost,
+})
+
+create("Frame", {
+    Position = UDim2.fromOffset(1, 1),
+    Size = UDim2.new(1, -2, 1, -2),
+    BackgroundTransparency = 1,
+    BorderColor3 = THEME.BorderDark,
+    BorderSizePixel = 1,
+    ZIndex = 8,
+    Parent = section,
+})
+
+local sectionTitle = codeLabel(
+    section,
+    "script loader",
+    11,
+    THEME.Text,
+    10
+)
+sectionTitle.Position = UDim2.fromOffset(8, 5)
+sectionTitle.Size = UDim2.new(1, -16, 0, 16)
+
+local status = codeLabel(
+    section,
+    "Starting...",
+    14,
+    THEME.BrightText,
+    11
+)
+status.Position = UDim2.fromOffset(12, 31)
+status.Size = UDim2.new(1, -98, 0, 24)
+
+local percentLabel = codeLabel(
+    section,
+    "0%",
+    11,
+    THEME.DimText,
+    11
+)
+percentLabel.AnchorPoint = Vector2.new(1, 0)
+percentLabel.Position = UDim2.new(1, -12, 0, 34)
+percentLabel.Size = UDim2.fromOffset(62, 18)
+percentLabel.TextXAlignment = Enum.TextXAlignment.Right
+
+local detail = codeLabel(
+    section,
+    "Preparing PuckAFK loader...",
+    11,
+    THEME.DimText,
+    11
+)
+detail.Position = UDim2.fromOffset(12, 55)
+detail.Size = UDim2.new(1, -24, 0, 18)
 detail.TextTruncate = Enum.TextTruncate.AtEnd
-detail.Parent = card
 
--- =========================
--- Animation helpers
--- =========================
+local progressTrack = create("Frame", {
+    Position = UDim2.fromOffset(12, 82),
+    Size = UDim2.new(1, -24, 0, 16),
+    BackgroundColor3 = THEME.Element,
+    BorderColor3 = THEME.BorderDark,
+    BorderSizePixel = 1,
+    ClipsDescendants = true,
+    ZIndex = 10,
+    Parent = section,
+})
 
-local targetCardSize = UDim2.fromOffset(360, 175)
+create("Frame", {
+    Position = UDim2.fromOffset(1, 1),
+    Size = UDim2.new(1, -2, 1, -2),
+    BackgroundTransparency = 1,
+    BorderColor3 = THEME.Border,
+    BorderSizePixel = 1,
+    ZIndex = 11,
+    Parent = progressTrack,
+})
 
-tween(card, 0.50, {
-    GroupTransparency = 0,
-    Size = targetCardSize,
-}, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local progressFill = create("Frame", {
+    Size = UDim2.fromScale(0, 1),
+    BackgroundColor3 = THEME.Accent,
+    BorderSizePixel = 0,
+    ZIndex = 10,
+    Parent = progressTrack,
+})
+
+local gameRow = create("Frame", {
+    Position = UDim2.fromOffset(12, 111),
+    Size = UDim2.new(1, -24, 0, 28),
+    BackgroundColor3 = THEME.Element,
+    BorderColor3 = THEME.BorderDark,
+    BorderSizePixel = 1,
+    ZIndex = 10,
+    Parent = section,
+})
+
+create("Frame", {
+    Position = UDim2.fromOffset(1, 1),
+    Size = UDim2.new(1, -2, 1, -2),
+    BackgroundTransparency = 1,
+    BorderColor3 = THEME.Border,
+    BorderSizePixel = 1,
+    ZIndex = 11,
+    Parent = gameRow,
+})
+
+local gameKey = codeLabel(gameRow, "game", 10, THEME.DimText, 12)
+gameKey.Position = UDim2.fromOffset(8, 0)
+gameKey.Size = UDim2.fromOffset(48, 28)
+
+local gameValue = codeLabel(gameRow, "detecting...", 11, THEME.Text, 12)
+gameValue.Position = UDim2.fromOffset(58, 0)
+gameValue.Size = UDim2.new(1, -66, 1, 0)
+gameValue.TextXAlignment = Enum.TextXAlignment.Right
+gameValue.TextTruncate = Enum.TextTruncate.AtEnd
+
+local sourceRow = create("Frame", {
+    Position = UDim2.fromOffset(12, 145),
+    Size = UDim2.new(1, -24, 0, 28),
+    BackgroundColor3 = THEME.Element,
+    BorderColor3 = THEME.BorderDark,
+    BorderSizePixel = 1,
+    ZIndex = 10,
+    Parent = section,
+})
+
+create("Frame", {
+    Position = UDim2.fromOffset(1, 1),
+    Size = UDim2.new(1, -2, 1, -2),
+    BackgroundTransparency = 1,
+    BorderColor3 = THEME.Border,
+    BorderSizePixel = 1,
+    ZIndex = 11,
+    Parent = sourceRow,
+})
+
+local sourceKey = codeLabel(sourceRow, "source", 10, THEME.DimText, 12)
+sourceKey.Position = UDim2.fromOffset(8, 0)
+sourceKey.Size = UDim2.fromOffset(48, 28)
+
+local sourceValue = codeLabel(sourceRow, "waiting...", 10, THEME.DimText, 12)
+sourceValue.Position = UDim2.fromOffset(58, 0)
+sourceValue.Size = UDim2.new(1, -66, 1, 0)
+sourceValue.TextXAlignment = Enum.TextXAlignment.Right
+sourceValue.TextTruncate = Enum.TextTruncate.AtEnd
+
+local footerText = codeLabel(
+    section,
+    "PuckUI visual shell • automatic PlaceId / universe routing • Anti-AFK",
+    9,
+    THEME.DimText,
+    10
+)
+footerText.Position = UDim2.fromOffset(12, 177)
+footerText.Size = UDim2.new(1, -24, 0, 12)
+footerText.TextXAlignment = Enum.TextXAlignment.Center
 
 local progressValue = 0
 local changingStatus = false
 
 local function setProgress(value)
-    value = math.clamp(value, 0, 1)
+    if cancelled then
+        return
+    end
+
+    value = math.clamp(tonumber(value) or 0, 0, 1)
     progressValue = value
-    tween(progressFill, 0.34, {
-        Size = UDim2.fromScale(value, 1),
-    }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+
+    tween(
+        progressFill,
+        0.20,
+        {Size = UDim2.fromScale(value, 1)},
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.Out
+    )
+
+    percentLabel.Text =
+        tostring(math.floor(value * 100 + 0.5)) .. "%"
 end
 
 local function setStatus(mainText, detailText, color)
-    while changingStatus do
+    if cancelled
+        or not status.Parent
+        or not detail.Parent then
+        return
+    end
+
+    while changingStatus and not cancelled do
         task.wait()
     end
+
+    if cancelled then
+        return
+    end
+
     changingStatus = true
 
-    local fadeOutA = tween(status, 0.10, {TextTransparency = 1}, Enum.EasingStyle.Quad)
-    tween(detail, 0.10, {TextTransparency = 1}, Enum.EasingStyle.Quad)
-    fadeOutA.Completed:Wait()
+    local fade = tween(
+        status,
+        0.07,
+        {TextTransparency = 1},
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.Out
+    )
+
+    tween(
+        detail,
+        0.07,
+        {TextTransparency = 1},
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.Out
+    )
+
+    fade.Completed:Wait()
+
+    if cancelled or not status.Parent then
+        changingStatus = false
+        return
+    end
 
     status.Text = mainText or "Loading..."
-    status.TextColor3 = color or THEME.text
+    status.TextColor3 = color or THEME.BrightText
     detail.Text = detailText or ""
 
-    tween(status, 0.16, {TextTransparency = 0}, Enum.EasingStyle.Quad)
-    tween(detail, 0.16, {TextTransparency = 0}, Enum.EasingStyle.Quad)
+    tween(status, 0.09, {TextTransparency = 0})
+    tween(detail, 0.09, {TextTransparency = 0})
 
     changingStatus = false
 end
 
 local function fail(stage, message)
-    setProgress(math.max(progressValue, 0.08))
-    setStatus(stage or "Loader Error", tostring(message or "Unknown error"), THEME.error)
-    warn("[PuckAFK Hub] " .. tostring(stage) .. ": " .. tostring(message))
+    if cancelled then
+        return
+    end
+
+    progressFill.BackgroundColor3 = THEME.Danger
+    accentTop.BackgroundColor3 = THEME.Danger
+    tabHighlight.BackgroundColor3 = THEME.Danger
+
+    setStatus(
+        stage or "Loader Error",
+        tostring(message or "Unknown error"),
+        THEME.BrightText
+    )
 end
 
 local function fetchSource(url)
-    -- Standard HttpGet path used by most supported environments.
     local ok, result = pcall(function()
         return game:HttpGet(url)
     end)
 
-    if ok and type(result) == "string" and #result > 0 then
+    if ok
+        and type(result) == "string"
+        and #result > 0 then
         return true, result
     end
 
-    -- Optional request fallback.
-    local requestFunction = request
-        or http_request
-        or (syn and syn.request)
-        or (http and http.request)
+    local requestFunction =
+        type(request) == "function" and request
+        or type(http_request) == "function" and http_request
+        or (
+            syn
+            and type(syn.request) == "function"
+            and syn.request
+            or nil
+        )
+        or (
+            http
+            and type(http.request) == "function"
+            and http.request
+            or nil
+        )
 
     if type(requestFunction) == "function" then
         local requestOk, response = pcall(requestFunction, {
@@ -290,8 +937,17 @@ local function fetchSource(url)
 
         if requestOk and type(response) == "table" then
             local body = response.Body or response.body
-            local code = response.StatusCode or response.Status or response.status
-            if type(body) == "string" and #body > 0 and (not code or tonumber(code) == 200) then
+            local code =
+                response.StatusCode
+                or response.Status
+                or response.status
+
+            if type(body) == "string"
+                and #body > 0
+                and (
+                    not code
+                    or tonumber(code) == 200
+                ) then
                 return true, body
             end
         end
@@ -300,241 +956,267 @@ local function fetchSource(url)
     return false, result or "HTTP request unavailable"
 end
 
-
--- =========================
--- Manual fallback dropdown
--- =========================
-
 local function chooseRouteManually(placeId)
-    setStatus("Game Not Detected", "Select a free supported script")
+    if cancelled then
+        return nil
+    end
+
+    setStatus(
+        "Game Not Detected",
+        "Choose a supported PuckAFK script manually"
+    )
     setProgress(0.30)
 
-    local picker = Instance.new("CanvasGroup")
-    picker.Name = "ManualDropdown"
-    picker.BackgroundTransparency = 1
-    picker.GroupTransparency = 1
-    picker.Position = UDim2.fromOffset(24, 139)
-    picker.Size = UDim2.new(1, -48, 0, 44)
-    picker.Parent = card
+    gameValue.Text = "PlaceId " .. tostring(placeId)
+    sourceValue.Text = "manual selection"
+
+    local picker = create("CanvasGroup", {
+        Name = "ManualDropdown",
+        Position = UDim2.fromOffset(12, 108),
+        Size = UDim2.new(1, -24, 0, 72),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        GroupTransparency = 1,
+        ZIndex = 40,
+        Parent = section,
+    })
+
+    gameRow.Visible = false
+    sourceRow.Visible = false
+    footerText.Visible = false
+
+    local selector = create("TextButton", {
+        Name = "Selector",
+        Size = UDim2.new(1, 0, 0, 30),
+        BackgroundColor3 = THEME.Element,
+        BorderColor3 = THEME.BorderDark,
+        BorderSizePixel = 1,
+        AutoButtonColor = false,
+        Font = Enum.Font.Code,
+        Text = "  select script...",
+        TextColor3 = THEME.Text,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 42,
+        Parent = picker,
+    })
+
+    create("Frame", {
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
+        BackgroundTransparency = 1,
+        BorderColor3 = THEME.Border,
+        BorderSizePixel = 1,
+        ZIndex = 43,
+        Parent = selector,
+    })
+
+    local arrow = codeLabel(
+        selector,
+        "v",
+        11,
+        THEME.DimText,
+        44
+    )
+    arrow.AnchorPoint = Vector2.new(1, 0)
+    arrow.Position = UDim2.new(1, -8, 0, 0)
+    arrow.Size = UDim2.fromOffset(18, 30)
+    arrow.TextXAlignment = Enum.TextXAlignment.Center
+
+    local menu = create("ScrollingFrame", {
+        Name = "Options",
+        Position = UDim2.fromOffset(0, 36),
+        Size = UDim2.new(1, 0, 0, 170),
+        BackgroundColor3 = THEME.Section,
+        BorderColor3 = THEME.BorderDark,
+        BorderSizePixel = 1,
+        CanvasSize = UDim2.new(),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        ScrollBarThickness = 2,
+        ScrollBarImageColor3 = THEME.DimText,
+        ScrollingDirection = Enum.ScrollingDirection.Y,
+        Visible = false,
+        ZIndex = 60,
+        Parent = picker,
+    })
+
+    create("Frame", {
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
+        BackgroundTransparency = 1,
+        BorderColor3 = THEME.Border,
+        BorderSizePixel = 1,
+        ZIndex = 61,
+        Parent = menu,
+    })
+
+    create("UIPadding", {
+        PaddingTop = UDim.new(0, 5),
+        PaddingBottom = UDim.new(0, 5),
+        PaddingLeft = UDim.new(0, 5),
+        PaddingRight = UDim.new(0, 5),
+        Parent = menu,
+    })
+
+    create("UIListLayout", {
+        Padding = UDim.new(0, 4),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = menu,
+    })
+
+    local manualRoutes = {
+        ROUTES[134162299584012],
+        ROUTES[142823291],
+        SNIPER_ARENA_ROUTE,
+        ROUTES[74889851913797],
+        ROUTES[128481067661991],
+        ROUTES[137233438285284],
+        ROUTES[131558436575033],
+        ROUTES[114697347887839],
+        ROUTES[102871156420149],
+    }
 
     local selectedRoute = nil
     local open = false
     local busy = false
 
-    local selector = Instance.new("TextButton")
-    selector.Name = "Selector"
-    selector.Size = UDim2.new(1, 0, 0, 40)
-    selector.BackgroundColor3 = Color3.fromRGB(31, 37, 32)
-    selector.BackgroundTransparency = 0.04
-    selector.BorderSizePixel = 0
-    selector.AutoButtonColor = false
-    selector.Font = Enum.Font.GothamMedium
-    selector.Text = "  Select a script..."
-    selector.TextColor3 = THEME.text
-    selector.TextSize = 12
-    selector.TextXAlignment = Enum.TextXAlignment.Left
-    selector.Parent = picker
-
-    local selectorCorner = Instance.new("UICorner")
-    selectorCorner.CornerRadius = UDim.new(0, 10)
-    selectorCorner.Parent = selector
-
-    local selectorStroke = Instance.new("UIStroke")
-    selectorStroke.Color = THEME.stroke
-    selectorStroke.Thickness = 1
-    selectorStroke.Transparency = 0.48
-    selectorStroke.Parent = selector
-
-    -- Font-independent dropdown arrow.
-    -- Built from a rotated square corner instead of a text/emoji glyph.
-    local arrow = Instance.new("Frame")
-    arrow.Name = "Arrow"
-    arrow.AnchorPoint = Vector2.new(0.5, 0.5)
-    arrow.Position = UDim2.new(1, -17, 0.5, -2)
-    arrow.Size = UDim2.fromOffset(8, 8)
-    arrow.BackgroundTransparency = 1
-    arrow.BorderSizePixel = 0
-    arrow.Rotation = 45
-    arrow.ZIndex = 4
-    arrow.Parent = selector
-
-    local arrowRight = Instance.new("Frame")
-    arrowRight.Name = "RightEdge"
-    arrowRight.AnchorPoint = Vector2.new(1, 0)
-    arrowRight.Position = UDim2.new(1, 0, 0, 0)
-    arrowRight.Size = UDim2.new(0, 2, 1, 0)
-    arrowRight.BackgroundColor3 = THEME.muted
-    arrowRight.BorderSizePixel = 0
-    arrowRight.Parent = arrow
-
-    local arrowBottom = Instance.new("Frame")
-    arrowBottom.Name = "BottomEdge"
-    arrowBottom.AnchorPoint = Vector2.new(0, 1)
-    arrowBottom.Position = UDim2.new(0, 0, 1, 0)
-    arrowBottom.Size = UDim2.new(1, 0, 0, 2)
-    arrowBottom.BackgroundColor3 = THEME.muted
-    arrowBottom.BorderSizePixel = 0
-    arrowBottom.Parent = arrow
-
-    local menu = Instance.new("CanvasGroup")
-    menu.Name = "Options"
-    menu.BackgroundColor3 = Color3.fromRGB(25, 30, 26)
-    menu.BackgroundTransparency = 0.02
-    menu.BorderSizePixel = 0
-    menu.GroupTransparency = 1
-    menu.Visible = false
-    menu.Position = UDim2.fromOffset(0, 46)
-    menu.Size = UDim2.new(1, 0, 0, 166)
-    menu.ZIndex = 20
-    menu.Parent = picker
-
-    local menuCorner = Instance.new("UICorner")
-    menuCorner.CornerRadius = UDim.new(0, 10)
-    menuCorner.Parent = menu
-
-    local menuStroke = Instance.new("UIStroke")
-    menuStroke.Color = THEME.stroke
-    menuStroke.Thickness = 1
-    menuStroke.Transparency = 0.48
-    menuStroke.Parent = menu
-
-    local menuPadding = Instance.new("UIPadding")
-    menuPadding.PaddingTop = UDim.new(0, 5)
-    menuPadding.PaddingBottom = UDim.new(0, 5)
-    menuPadding.PaddingLeft = UDim.new(0, 5)
-    menuPadding.PaddingRight = UDim.new(0, 5)
-    menuPadding.Parent = menu
-
-    local menuLayout = Instance.new("UIListLayout")
-    menuLayout.Padding = UDim.new(0, 4)
-    menuLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    menuLayout.Parent = menu
-
-    local manualRoutes = {
-        ROUTES[128481067661991],
-        ROUTES[137233438285284],
-        ROUTES[131558436575033],
-        ROUTES[114697347887839],
-    }
-
     local function setDropdown(openState)
-        if busy then return end
-        open = openState
+        if busy or cancelled then
+            return
+        end
+
+        open = openState == true
 
         if open then
             menu.Visible = true
+            arrow.Text = "^"
 
-            tween(card, 0.28, {
-                Size = UDim2.fromOffset(360, 366),
-            }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+            tween(
+                card,
+                0.18,
+                {Size = UDim2.fromOffset(WINDOW_WIDTH, 420)}
+            )
 
-            tween(picker, 0.28, {
-                Size = UDim2.new(1, -48, 0, 216),
-            }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+            tween(
+                shadow,
+                0.18,
+                {Size = UDim2.fromOffset(WINDOW_WIDTH, 420)}
+            )
 
-            tween(menu, 0.18, {
-                GroupTransparency = 0,
-            }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-            tween(arrow, 0.18, {
-                Rotation = 225,
-            }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            tween(
+                picker,
+                0.18,
+                {Size = UDim2.new(1, -24, 0, 212)}
+            )
         else
-            tween(menu, 0.14, {
-                GroupTransparency = 1,
-            }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+            arrow.Text = "v"
+            menu.Visible = false
 
-            tween(arrow, 0.18, {
-                Rotation = 45,
-            }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            tween(
+                card,
+                0.18,
+                {Size = targetCardSize}
+            )
 
-            task.delay(0.14, function()
-                if menu and menu.Parent and not open then
-                    menu.Visible = false
-                end
-            end)
+            tween(
+                shadow,
+                0.18,
+                {Size = targetCardSize}
+            )
 
-            tween(picker, 0.24, {
-                Size = UDim2.new(1, -48, 0, 44),
-            }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-
-            tween(card, 0.24, {
-                Size = UDim2.fromOffset(360, 226),
-            }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+            tween(
+                picker,
+                0.18,
+                {Size = UDim2.new(1, -24, 0, 72)}
+            )
         end
     end
 
-    selector.MouseButton1Click:Connect(function()
-        if busy then return end
-        setDropdown(not open)
-    end)
-
     selector.MouseEnter:Connect(function()
-        if busy then return end
-        tween(selector, 0.14, {
-            BackgroundColor3 = Color3.fromRGB(39, 46, 40),
-        }, Enum.EasingStyle.Quad)
+        if not busy then
+            tween(
+                selector,
+                0.08,
+                {BackgroundColor3 = THEME.ElementHover}
+            )
+        end
     end)
 
     selector.MouseLeave:Connect(function()
-        if busy then return end
-        tween(selector, 0.14, {
-            BackgroundColor3 = Color3.fromRGB(31, 37, 32),
-        }, Enum.EasingStyle.Quad)
+        if not busy then
+            tween(
+                selector,
+                0.08,
+                {BackgroundColor3 = THEME.Element}
+            )
+        end
+    end)
+
+    selector.MouseButton1Click:Connect(function()
+        setDropdown(not open)
     end)
 
     for index, option in ipairs(manualRoutes) do
-        -- IMPORTANT: bind a fresh route table for this specific button.
-        -- This prevents loop-closure capture from causing multiple dropdown
-        -- entries to launch the same final route.
         local routeOption = {
             name = option.name,
             source = option.source,
             url = option.url,
         }
 
-        local item = Instance.new("TextButton")
-        item.Name = "Option" .. tostring(index)
-        item.LayoutOrder = index
-        item.Size = UDim2.new(1, 0, 0, 35)
-        item.BackgroundColor3 = Color3.fromRGB(31, 37, 32)
-        item.BackgroundTransparency = 0.18
-        item.BorderSizePixel = 0
-        item.AutoButtonColor = false
-        item.Font = Enum.Font.GothamMedium
-        item.Text = "  " .. routeOption.name
-        item.TextColor3 = THEME.text
-        item.TextSize = 11
-        item.TextXAlignment = Enum.TextXAlignment.Left
-        item.ZIndex = 21
-        item.Parent = menu
+        local item = create("TextButton", {
+            Name = "Option" .. tostring(index),
+            LayoutOrder = index,
+            Size = UDim2.new(1, -2, 0, 27),
+            BackgroundColor3 = THEME.Element,
+            BorderColor3 = THEME.BorderDark,
+            BorderSizePixel = 1,
+            AutoButtonColor = false,
+            Font = Enum.Font.Code,
+            Text = "  " .. routeOption.name,
+            TextColor3 = THEME.Text,
+            TextSize = 11,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 62,
+            Parent = menu,
+        })
 
-        local itemCorner = Instance.new("UICorner")
-        itemCorner.CornerRadius = UDim.new(0, 7)
-        itemCorner.Parent = item
+        create("Frame", {
+            Position = UDim2.fromOffset(1, 1),
+            Size = UDim2.new(1, -2, 1, -2),
+            BackgroundTransparency = 1,
+            BorderColor3 = THEME.Border,
+            BorderSizePixel = 1,
+            ZIndex = 63,
+            Parent = item,
+        })
 
         item.MouseEnter:Connect(function()
-            if busy then return end
-            tween(item, 0.12, {
-                BackgroundColor3 = Color3.fromRGB(43, 52, 44),
-                BackgroundTransparency = 0.02,
-            }, Enum.EasingStyle.Quad)
+            if not busy then
+                tween(
+                    item,
+                    0.08,
+                    {BackgroundColor3 = THEME.ElementHover}
+                )
+            end
         end)
 
         item.MouseLeave:Connect(function()
-            if busy then return end
-            tween(item, 0.12, {
-                BackgroundColor3 = Color3.fromRGB(31, 37, 32),
-                BackgroundTransparency = 0.18,
-            }, Enum.EasingStyle.Quad)
+            if not busy then
+                tween(
+                    item,
+                    0.08,
+                    {BackgroundColor3 = THEME.Element}
+                )
+            end
         end)
 
         item.MouseButton1Click:Connect(function()
-            if busy then return end
+            if busy or cancelled then
+                return
+            end
+
             busy = true
 
-            -- Copy the exact route selected by THIS button. Do not store the
-            -- loop variable itself and do not re-detect by PlaceId afterward.
             selectedRoute = {
                 name = routeOption.name,
                 source = routeOption.source,
@@ -542,64 +1224,84 @@ local function chooseRouteManually(placeId)
             }
 
             selector.Text = "  " .. selectedRoute.name
-            setStatus("Script Selected", selectedRoute.name)
+            gameValue.Text = selectedRoute.name
+            sourceValue.Text = selectedRoute.source
 
-            tween(item, 0.14, {
-                BackgroundColor3 = Color3.fromRGB(45, 70, 50),
-                BackgroundTransparency = 0,
-            }, Enum.EasingStyle.Quad)
+            setStatus(
+                "Script Selected",
+                selectedRoute.name
+            )
 
-            tween(menu, 0.14, {
-                GroupTransparency = 1,
-            }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+            item.BackgroundColor3 = THEME.ElementHover
 
-            tween(arrow, 0.14, {
-                Rotation = 45,
-            }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            open = false
+            menu.Visible = false
+            arrow.Text = "v"
 
-            task.wait(0.16)
+            task.wait(0.12)
         end)
     end
 
-    -- Expand just enough to reveal the selector.
-    tween(card, 0.32, {
-        Size = UDim2.fromOffset(360, 226),
-    }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+    tween(picker, 0.12, {GroupTransparency = 0})
 
-    task.wait(0.10)
-
-    tween(picker, 0.22, {
-        GroupTransparency = 0,
-    }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-    while not selectedRoute and gui.Parent do
+    while not selectedRoute
+        and gui.Parent
+        and not cancelled do
         task.wait(0.03)
     end
 
-    if not selectedRoute then
+    if cancelled or not selectedRoute then
         return nil
     end
 
-    local pickerFade = tween(picker, 0.18, {
-        GroupTransparency = 1,
-    }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    local fade = tween(
+        picker,
+        0.10,
+        {GroupTransparency = 1}
+    )
 
-    pickerFade.Completed:Wait()
+    fade.Completed:Wait()
 
-    pcall(function()
+    if picker.Parent then
         picker:Destroy()
-    end)
+    end
 
-    tween(card, 0.30, {
-        Size = targetCardSize,
-    }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+    gameRow.Visible = true
+    sourceRow.Visible = true
+    footerText.Visible = true
 
-    detail.Text = "Manual selection • " .. selectedRoute.name
-    task.wait(0.12)
+    card.Size = targetCardSize
+    shadow.Size = targetCardSize
+
+    gameValue.Text = selectedRoute.name
+    sourceValue.Text = selectedRoute.source
 
     return selectedRoute
 end
 
+-- Entrance animation. Same restrained PuckUI motion instead of the old
+-- oversized rounded-card spring animation.
+card.Size = UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT - 14)
+shadow.Size = card.Size
+
+tween(
+    card,
+    0.20,
+    {
+        GroupTransparency = 0,
+        Size = targetCardSize,
+    },
+    Enum.EasingStyle.Quad,
+    Enum.EasingDirection.Out
+)
+
+tween(
+    shadow,
+    0.20,
+    {Size = targetCardSize},
+    Enum.EasingStyle.Quad,
+    Enum.EasingDirection.Out
+)
 
 -- =========================
 -- Loader sequence
@@ -608,7 +1310,11 @@ end
 task.spawn(function()
     task.wait(0.18)
 
+    if cancelled then return end
+
     setStatus("Checking Game...", "Waiting for Roblox to finish loading")
+    gameValue.Text = "detecting..."
+    sourceValue.Text = "waiting..."
     setProgress(0.08)
 
     if not game:IsLoaded() then
@@ -635,9 +1341,16 @@ task.spawn(function()
     task.wait(0.12)
 
     local placeId = game.PlaceId
-    local route = ROUTES[placeId]
+    local universeId = game.GameId
 
-    setStatus("Finding Script...", "PlaceId: " .. tostring(placeId))
+    -- Universe routing is checked first. This is what lets Sniper Arena keep
+    -- working in every current/future subplace without adding every PlaceId.
+    local route = UNIVERSE_ROUTES[universeId] or ROUTES[placeId]
+
+    setStatus(
+        "Finding Script...",
+        "GameId: " .. tostring(universeId) .. " • PlaceId: " .. tostring(placeId)
+    )
     setProgress(0.30)
     task.wait(0.20)
 
@@ -651,17 +1364,23 @@ task.spawn(function()
     end
 
     -- Automatic detection and manual selection intentionally converge here.
-    -- Whatever the user selected is the exact GitHub script that gets fetched,
+    -- Whatever the user selected is the exact published script source that gets fetched,
     -- compiled, and executed. No preview/fake substitute is used.
+    if cancelled then return end
+
+    gameValue.Text = route.name
+    sourceValue.Text = route.source
+
     setStatus("Script Selected", route.name)
     setProgress(0.42)
     task.wait(0.18)
 
-    setStatus("Connecting to GitHub...", route.source)
+    setStatus("Connecting to Source...", route.source)
     detail.Text = route.name .. " • " .. route.source
     setProgress(0.52)
 
     local downloadOk, source = fetchSource(route.url)
+
     if not downloadOk then
         fail("Download Failed", source)
         return
@@ -715,14 +1434,35 @@ task.spawn(function()
     end
 
     setProgress(1)
-    setStatus("Loaded Successfully", route.name, THEME.success)
+    progressFill.BackgroundColor3 = THEME.Success
+    accentTop.BackgroundColor3 = THEME.Success
+    tabHighlight.BackgroundColor3 = THEME.Success
+    setStatus("Loaded Successfully", route.name, THEME.BrightText)
 
     task.wait(0.75)
 
-    local fade = tween(card, 0.48, {
-        GroupTransparency = 1,
-        Size = UDim2.fromOffset(340, 160),
-    }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+    local fade = tween(
+        card,
+        0.18,
+        {
+            GroupTransparency = 1,
+            Size = UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT - 10),
+        },
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.In
+    )
+
+    tween(
+        shadow,
+        0.18,
+        {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT - 10),
+        },
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.In
+    )
+
     fade.Completed:Wait()
 
     pcall(function()
