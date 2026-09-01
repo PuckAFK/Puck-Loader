@@ -926,6 +926,33 @@ function PuckUI:CreateWindow(settings)
         end
     end
 
+    function window:ClampToViewport(padding)
+        if not self.Main or not self.Main.Parent then
+            return
+        end
+        if not self.UserPositioned then
+            self:Center()
+            return
+        end
+
+        local viewport = getViewportSize()
+        local margin = math.max(4, tonumber(padding) or 6)
+        local size = self.Main.AbsoluteSize
+        local pos = self.Main.AbsolutePosition
+
+        local maxX = math.max(margin, viewport.X - size.X - margin)
+        local maxY = math.max(margin, viewport.Y - size.Y - margin)
+        local clampedX = math.clamp(pos.X, margin, maxX)
+        local clampedY = math.clamp(pos.Y, margin, maxY)
+
+        self.Main.AnchorPoint = Vector2.new(0, 0)
+        self.Main.Position = UDim2.fromOffset(clampedX, clampedY)
+        if shadow and shadow.Parent then
+            shadow.AnchorPoint = Vector2.new(0, 0)
+            shadow.Position = UDim2.fromOffset(clampedX + 4, clampedY + 4)
+        end
+    end
+
     function window:ApplyResponsiveLayout()
         if not self.ScreenGui or not self.ScreenGui.Parent then
             return
@@ -1040,6 +1067,10 @@ function PuckUI:CreateWindow(settings)
                 math.floor(viewport.Y),
                 scalePercent
             ))
+        end
+
+        if self.UserPositioned then
+            self:ClampToViewport(phoneLayout and 6 or 8)
         end
     end
 
@@ -1494,6 +1525,7 @@ function PuckUI:CreateWindow(settings)
         )
         main.Position = newPos
         shadow.Position = UDim2.new(newPos.X.Scale, newPos.X.Offset + 4, newPos.Y.Scale, newPos.Y.Offset + 4)
+        window:ClampToViewport(6)
     end
 
     dragHandle.InputBegan:Connect(function(input)
@@ -1502,6 +1534,17 @@ function PuckUI:CreateWindow(settings)
 
             closeOpenPopup()
             dragging = true
+
+            if not window.UserPositioned then
+                local absPos = main.AbsolutePosition
+                main.AnchorPoint = Vector2.new(0, 0)
+                main.Position = UDim2.fromOffset(absPos.X, absPos.Y)
+                if shadow and shadow.Parent then
+                    shadow.AnchorPoint = Vector2.new(0, 0)
+                    shadow.Position = UDim2.fromOffset(absPos.X + 4, absPos.Y + 4)
+                end
+            end
+
             window.UserPositioned = true
             dragStart = input.Position
             startPosition = main.Position
