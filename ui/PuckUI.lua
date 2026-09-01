@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.4 - Rose Refined / Global Keybind + Configs
+    PuckUI v3.5 - Responsive Release / Global Keybind + Configs
     Shared PuckAFK game-script UI.
 
     Combined from both supplied PuckUI variants:
@@ -20,7 +20,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.4.0",
+    Version = "3.5.0",
     Flags = {},
     Window = nil,
 }
@@ -71,12 +71,16 @@ SharedEnvironment.__PUCKAFK_UI_SHARED_STATE =
         CapturingWindow = nil,
         CapturingControl = nil,
         SuppressToggleUntil = 0,
+        LayoutMode = "Auto",
+        UIScalePercent = 100,
     }
 
 local SharedUIState = SharedEnvironment.__PUCKAFK_UI_SHARED_STATE
 SharedUIState.ToggleKeyName = SharedUIState.ToggleKeyName or "K"
 SharedUIState.Windows = SharedUIState.Windows or setmetatable({}, {__mode = "k"})
 SharedUIState.SuppressToggleUntil = SharedUIState.SuppressToggleUntil or 0
+SharedUIState.LayoutMode = tostring(SharedUIState.LayoutMode or "Auto")
+SharedUIState.UIScalePercent = math.clamp(tonumber(SharedUIState.UIScalePercent) or 100, 75, 125)
 
 -- Shared persistent-config defaults used by every PuckAFK UI.
 -- The Hub can override these values in getgenv() before a game script starts,
@@ -155,6 +159,86 @@ local function jsonEncode(value)
     return ok and text or nil
 end
 
+local function normalizeLayoutMode(value)
+    local text = tostring(value or "Auto")
+    local lowered = string.lower(text)
+    if lowered == "phone" or lowered == "mobile" then
+        return "Phone"
+    elseif lowered == "desktop" or lowered == "pc" then
+        return "Desktop"
+    end
+    return "Auto"
+end
+
+local function getViewportSize()
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    if viewport.X < 1 or viewport.Y < 1 then
+        return Vector2.new(1280, 720)
+    end
+    return viewport
+end
+
+local function resolveLayoutMode(mode, viewport)
+    mode = normalizeLayoutMode(mode)
+    if mode ~= "Auto" then
+        return mode
+    end
+
+    viewport = viewport or getViewportSize()
+    local smallViewport = viewport.X < 760 or viewport.Y < 500
+    local touchPhone = UserInputService.TouchEnabled
+        and math.min(viewport.X, viewport.Y) <= 720
+
+    return (smallViewport or touchPhone) and "Phone" or "Desktop"
+end
+
+local UI_PREFS_PATH = SharedConfigState.Root .. "/_ui_layout.json"
+
+local function loadSharedUIPreferences()
+    if not FileAPI.Read or not FileAPI.IsFile then
+        return
+    end
+
+    local okExists, exists = pcall(FileAPI.IsFile, UI_PREFS_PATH)
+    if not okExists or not exists then
+        return
+    end
+
+    local okRead, text = pcall(FileAPI.Read, UI_PREFS_PATH)
+    if not okRead then
+        return
+    end
+
+    local data = jsonDecode(text)
+    if type(data) ~= "table" then
+        return
+    end
+
+    SharedUIState.LayoutMode = normalizeLayoutMode(data.LayoutMode or SharedUIState.LayoutMode)
+    SharedUIState.UIScalePercent = math.clamp(
+        tonumber(data.UIScalePercent) or SharedUIState.UIScalePercent or 100,
+        75,
+        125
+    )
+end
+
+local function saveSharedUIPreferences()
+    if not FileAPI.Write or not FileAPI.MakeFolder then
+        return false
+    end
+
+    ensureFolderPath(SharedConfigState.Root)
+    local encoded = jsonEncode({
+        Version = 1,
+        LayoutMode = normalizeLayoutMode(SharedUIState.LayoutMode),
+        UIScalePercent = math.clamp(tonumber(SharedUIState.UIScalePercent) or 100, 75, 125),
+    })
+
+    return encoded ~= nil and pcall(FileAPI.Write, UI_PREFS_PATH, encoded)
+end
+
+loadSharedUIPreferences()
 
 local function create(className, properties)
     local object = Instance.new(className)
@@ -308,8 +392,13 @@ function PuckUI:Notify(data)
 
     data = data or {}
 
+    local viewport = getViewportSize()
+    local phoneLayout = resolveLayoutMode(SharedUIState.LayoutMode, viewport) == "Phone"
+    local toastWidth = math.min(phoneLayout and 330 or 280, math.max(220, viewport.X - 24))
+    local toastHeight = phoneLayout and 64 or 56
+
     local toast = create("Frame", {
-        Size = UDim2.fromOffset(280, 56),
+        Size = UDim2.fromOffset(toastWidth, toastHeight),
         BackgroundColor3 = Theme.Section,
         BorderColor3 = Theme.Border,
         BorderSizePixel = 1,
@@ -337,13 +426,13 @@ function PuckUI:Notify(data)
     })
     table.insert(window.AccentObjects, accent)
 
-    local title = codeLabel(toast, data.Title or "PuckAFK", 12, Theme.BrightText, 703)
+    local title = codeLabel(toast, data.Title or "PuckAFK", phoneLayout and 14 or 12, Theme.BrightText, 703)
     title.Position = UDim2.fromOffset(12, 5)
-    title.Size = UDim2.new(1, -18, 0, 18)
+    title.Size = UDim2.new(1, -18, 0, phoneLayout and 21 or 18)
 
-    local content = codeLabel(toast, data.Content or "", 11, Theme.DimText, 703)
-    content.Position = UDim2.fromOffset(12, 22)
-    content.Size = UDim2.new(1, -18, 0, 28)
+    local content = codeLabel(toast, data.Content or "", phoneLayout and 12 or 11, Theme.DimText, 703)
+    content.Position = UDim2.fromOffset(12, phoneLayout and 27 or 22)
+    content.Size = UDim2.new(1, -18, 0, phoneLayout and 31 or 28)
     content.TextWrapped = true
     content.TextYAlignment = Enum.TextYAlignment.Top
 
@@ -381,8 +470,8 @@ function PuckUI:CreateWindow(settings)
 
     local width = tonumber(settings.Width) or 480
     local height = tonumber(settings.Height) or 540
-    width = math.max(360, width)
-    height = math.max(360, height)
+    width = math.max(320, width)
+    height = math.max(320, height)
 
     local screen = create("ScreenGui", {
         Name = settings.GuiName or "PuckAFK_UI",
@@ -395,7 +484,8 @@ function PuckUI:CreateWindow(settings)
 
     local shadow = create("Frame", {
         Name = "Shadow",
-        Position = UDim2.new(0.5, -math.floor(width / 2) + 4, 0.5, -math.floor(height / 2) + 4),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 4, 0.5, 4),
         Size = UDim2.fromOffset(width, height),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
         BackgroundTransparency = 0.5,
@@ -406,7 +496,8 @@ function PuckUI:CreateWindow(settings)
 
     local main = create("Frame", {
         Name = "Main",
-        Position = UDim2.new(0.5, -math.floor(width / 2), 0.5, -math.floor(height / 2)),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5),
         Size = UDim2.fromOffset(width, height),
         BackgroundColor3 = Theme.Main,
         BorderColor3 = Theme.BorderDark,
@@ -415,6 +506,9 @@ function PuckUI:CreateWindow(settings)
         ZIndex = 2,
         Parent = screen,
     })
+
+    local mainScale = create("UIScale", {Scale = 1, Parent = main})
+    local shadowScale = create("UIScale", {Scale = 1, Parent = shadow})
 
     -- Refined procedural rose / damask background.
     -- The whole pattern is faded as one group so overlapping petals never
@@ -777,10 +871,160 @@ function PuckUI:CreateWindow(settings)
         Minimized = false,
         Visible = true,
         FullSize = UDim2.fromOffset(width, height),
+        BaseWidth = width,
+        BaseHeight = height,
+        MainScale = mainScale,
+        ShadowScale = shadowScale,
+        LayoutMode = normalizeLayoutMode(SharedUIState.LayoutMode),
+        ResolvedLayout = "Desktop",
+        UIScalePercent = math.clamp(tonumber(SharedUIState.UIScalePercent) or 100, 75, 125),
         ToggleKeyName = tostring(SharedUIState.ToggleKeyName or "K"),
         ToggleKeyCode = Enum.KeyCode.K,
         KeybindDisplays = {},
+        ResponsiveConnections = {},
     }
+
+    local function updateResponsiveTextSizes(phoneLayout)
+        local factor = phoneLayout and 1.12 or 1
+        for _, object in ipairs(screen:GetDescendants()) do
+            if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
+                local base = object:GetAttribute("PuckBaseTextSize")
+                if not base then
+                    base = object.TextSize
+                    object:SetAttribute("PuckBaseTextSize", base)
+                end
+                object.TextSize = math.max(9, math.floor(base * factor + 0.5))
+            end
+        end
+    end
+
+    local function updateResponsiveRows(phoneLayout)
+        local factor = phoneLayout and 1.10 or 1
+        for _, object in ipairs(screen:GetDescendants()) do
+            if object:IsA("GuiObject") then
+                local baseHeight = object:GetAttribute("PuckControlBaseHeight")
+                if baseHeight then
+                    object.Size = UDim2.new(1, 0, 0, math.floor(baseHeight * factor + 0.5))
+                end
+            end
+        end
+    end
+
+    function window:ApplyResponsiveLayout()
+        if not self.ScreenGui or not self.ScreenGui.Parent then
+            return
+        end
+
+        local viewport = getViewportSize()
+        local requestedMode = normalizeLayoutMode(SharedUIState.LayoutMode)
+        local resolved = resolveLayoutMode(requestedMode, viewport)
+        local phoneLayout = resolved == "Phone"
+        local scalePercent = math.clamp(tonumber(SharedUIState.UIScalePercent) or 100, 75, 125)
+        local requestedScale = scalePercent / 100
+        local landscape = viewport.X > viewport.Y
+
+        local baseWidth = self.BaseWidth
+        local baseHeight = self.BaseHeight
+        if phoneLayout then
+            if landscape then
+                baseWidth = math.min(560, math.max(420, math.floor((viewport.X - 18) / math.max(requestedScale, 0.75))))
+                baseHeight = math.min(370, math.max(300, math.floor((viewport.Y - 18) / math.max(requestedScale, 0.75))))
+            else
+                baseWidth = math.min(380, math.max(320, math.floor((viewport.X - 18) / math.max(requestedScale, 0.75))))
+                baseHeight = math.min(620, math.max(430, math.floor((viewport.Y - 18) / math.max(requestedScale, 0.75))))
+            end
+        end
+
+        local fitScale = math.min(
+            (viewport.X - 12) / math.max(baseWidth, 1),
+            (viewport.Y - 12) / math.max(baseHeight, 1)
+        )
+        local effectiveScale = math.max(0.60, math.min(requestedScale, fitScale))
+
+        self.LayoutMode = requestedMode
+        self.ResolvedLayout = resolved
+        self.UIScalePercent = scalePercent
+        self.FullSize = UDim2.fromOffset(baseWidth, baseHeight)
+        self.MainScale.Scale = effectiveScale
+        self.ShadowScale.Scale = effectiveScale
+
+        local headerHeight = phoneLayout and 31 or 24
+        local tabHeight = phoneLayout and 29 or 22
+        local tabY = phoneLayout and 35 or 27
+        local contentY = phoneLayout and 70 or 57
+        local bottomPad = phoneLayout and 79 or 65
+
+        titleBar.Size = UDim2.new(1, -4, 0, headerHeight)
+        close.Size = UDim2.fromOffset(phoneLayout and 27 or 18, phoneLayout and 27 or 19)
+        minimize.Position = UDim2.new(1, phoneLayout and -30 or -20, 0, 2)
+        minimize.Size = UDim2.fromOffset(phoneLayout and 27 or 18, phoneLayout and 27 or 18)
+        dragHandle.Size = UDim2.new(1, phoneLayout and -62 or -42, 1, 0)
+        accentTop.Position = UDim2.fromOffset(2, phoneLayout and 33 or 26)
+        tabBar.Position = UDim2.fromOffset(2, tabY)
+        tabBar.Size = UDim2.new(1, -4, 0, tabHeight)
+        columnsHost.Position = UDim2.fromOffset(phoneLayout and 5 or 8, contentY)
+        columnsHost.Size = UDim2.new(1, phoneLayout and -10 or -16, 1, -bottomPad)
+
+        for _, tab in ipairs(self.Tabs or {}) do
+            if tab.Button then
+                local baseTabWidth = tab.Button:GetAttribute("PuckBaseTabWidth") or tab.Button.Size.X.Offset
+                tab.Button.Size = UDim2.fromOffset(baseTabWidth + (phoneLayout and 10 or 0), tabHeight)
+            end
+            if tab._ReflowSections then
+                tab:_ReflowSections()
+            end
+        end
+
+        updateResponsiveRows(phoneLayout)
+        updateResponsiveTextSizes(phoneLayout)
+
+        if self.Minimized then
+            main.Size = UDim2.fromOffset(baseWidth, phoneLayout and 34 or 27)
+            shadow.Size = main.Size
+        else
+            main.Size = self.FullSize
+            shadow.Size = self.FullSize
+        end
+
+        notificationHolder.Size = UDim2.fromOffset(
+            math.min(phoneLayout and 340 or 290, math.max(220, viewport.X - 18)),
+            math.max(220, viewport.Y - 20)
+        )
+
+        if self.DeviceStatusLabel and self.DeviceStatusLabel.Set then
+            local inputName = UserInputService.TouchEnabled and "Touch" or "Keyboard/Mouse"
+            self.DeviceStatusLabel:Set(string.format(
+                "%s • %s • %dx%d • %d%%",
+                inputName,
+                resolved,
+                math.floor(viewport.X),
+                math.floor(viewport.Y),
+                scalePercent
+            ))
+        end
+    end
+
+    function window:SetLayoutMode(mode)
+        SharedUIState.LayoutMode = normalizeLayoutMode(mode)
+        for otherWindow in pairs(SharedUIState.Windows) do
+            if otherWindow and otherWindow.ApplyResponsiveLayout then
+                otherWindow:ApplyResponsiveLayout()
+            end
+        end
+        saveSharedUIPreferences()
+        return SharedUIState.LayoutMode
+    end
+
+    function window:SetUIScalePercent(value)
+        SharedUIState.UIScalePercent = math.clamp(tonumber(value) or 100, 75, 125)
+        for otherWindow in pairs(SharedUIState.Windows) do
+            if otherWindow and otherWindow.ApplyResponsiveLayout then
+                otherWindow:ApplyResponsiveLayout()
+            end
+        end
+        saveSharedUIPreferences()
+        return SharedUIState.UIScalePercent
+    end
 
     ------------------------------------------------------------------------
     -- Shared persistent configuration
@@ -1165,6 +1409,29 @@ function PuckUI:CreateWindow(settings)
     self.Window = window
     SharedUIState.Windows[window] = true
 
+    local function connectViewportCamera(camera)
+        if not camera then
+            return
+        end
+        table.insert(window.ResponsiveConnections, camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+            task.defer(function()
+                if window.ScreenGui and window.ScreenGui.Parent then
+                    window:ApplyResponsiveLayout()
+                end
+            end)
+        end))
+    end
+
+    connectViewportCamera(workspace.CurrentCamera)
+    table.insert(window.ResponsiveConnections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        connectViewportCamera(workspace.CurrentCamera)
+        task.defer(function()
+            if window.ScreenGui and window.ScreenGui.Parent then
+                window:ApplyResponsiveLayout()
+            end
+        end)
+    end))
+
     ------------------------------------------------------------------------
     -- Reliable dragging
     ------------------------------------------------------------------------
@@ -1324,6 +1591,11 @@ function PuckUI:CreateWindow(settings)
         self:ClosePopup()
         SharedUIState.Windows[self] = nil
 
+        for _, connection in ipairs(self.ResponsiveConnections or {}) do
+            pcall(function() connection:Disconnect() end)
+        end
+        self.ResponsiveConnections = {}
+
         if SharedUIState.CapturingWindow == self then
             SharedUIState.CapturingWindow = nil
             SharedUIState.CapturingControl = nil
@@ -1411,6 +1683,7 @@ function PuckUI:CreateWindow(settings)
             ZIndex = 10,
             Parent = tabBar,
         })
+        button:SetAttribute("PuckBaseTabWidth", buttonWidth)
 
         -- Aztup top/bottom highlight for active tab
         local highlight = create("Frame", {
@@ -1509,16 +1782,19 @@ function PuckUI:CreateWindow(settings)
         -- because Roblox may not update it until a later render step.
         local function reflowSections()
             local count = #tab.Sections
+            local phoneLayout = window.ResolvedLayout == "Phone"
 
-            if count <= 1 then
+            if phoneLayout or count <= 1 then
                 columns[1].Visible = true
                 columns[1].Position = UDim2.new(0, 0, 0, 0)
                 columns[1].Size = UDim2.new(1, 0, 1, 0)
                 columns[2].Visible = false
                 columns[2].CanvasPosition = Vector2.new(0, 0)
 
-                if count == 1 and tab.Sections[1].Frame.Parent ~= columns[1] then
-                    tab.Sections[1].Frame.Parent = columns[1]
+                for _, existingSection in ipairs(tab.Sections) do
+                    if existingSection.Frame.Parent ~= columns[1] then
+                        existingSection.Frame.Parent = columns[1]
+                    end
                 end
             else
                 columns[1].Visible = true
@@ -1541,6 +1817,8 @@ function PuckUI:CreateWindow(settings)
                 updateColumnCanvas(2)
             end)
         end
+
+        tab._ReflowSections = reflowSections
 
         function tab:CreateSection(sectionName)
             local section = {
@@ -1648,14 +1926,17 @@ function PuckUI:CreateWindow(settings)
 
         local function addControlFrame(height)
             local section = getCurrentSection(tab)
-            return create("Frame", {
-                Size = UDim2.new(1, 0, 0, height),
+            local phoneFactor = window.ResolvedLayout == "Phone" and 1.10 or 1
+            local row = create("Frame", {
+                Size = UDim2.new(1, 0, 0, math.floor(height * phoneFactor + 0.5)),
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
                 ClipsDescendants = false,
                 ZIndex = 6,
                 Parent = section.Body,
             })
+            row:SetAttribute("PuckControlBaseHeight", height)
+            return row
         end
 
         function tab:CreateDivider()
@@ -1970,8 +2251,8 @@ function PuckUI:CreateWindow(settings)
 
                 local selectorPosition = selector.AbsolutePosition
                 local selectorSize = selector.AbsoluteSize
-                local itemHeight = 20
-                local maxVisible = tonumber(data.MaxVisible) or 8
+                local itemHeight = window.ResolvedLayout == "Phone" and 28 or 20
+                local maxVisible = tonumber(data.MaxVisible) or (window.ResolvedLayout == "Phone" and 6 or 8)
                 local visibleCount = math.min(#options, maxVisible)
                 local menuHeight = math.max(itemHeight + 2, visibleCount * itemHeight + 2)
 
@@ -2027,7 +2308,7 @@ function PuckUI:CreateWindow(settings)
                         Font = Enum.Font.Code,
                         Text = "  " .. tostring(value),
                         TextColor3 = value == current and Theme.BrightText or Theme.Text,
-                        TextSize = 11,
+                        TextSize = window.ResolvedLayout == "Phone" and 12 or 11,
                         TextXAlignment = Enum.TextXAlignment.Left,
                         ZIndex = 512,
                         Parent = popup,
@@ -2385,23 +2666,52 @@ function PuckUI:CreateWindow(settings)
 
         table.insert(self.Tabs, tab)
 
-        -- Every current and future PuckAFK script gets the UI keybind in its
-        -- Settings tab automatically. No per-game Hide UI button is needed.
+        -- Shared interface controls are injected into every Settings tab.
         if string.lower(tab.Name) == "settings"
-            and settings.DisableBuiltInUIKeybind ~= true then
+            and settings.DisableBuiltInResponsiveUI ~= true then
 
             tab:CreateSection("Interface")
-            tab:CreateKeybind({
-                Name = "UI Toggle Keybind",
-                Callback = function(keyName)
-                    PuckUI:Notify({
-                        Title = "UI Keybind",
-                        Content = "All PuckAFK UIs now use " .. tostring(keyName),
-                        Duration = 2.5,
-                    })
+
+            if settings.DisableBuiltInUIKeybind ~= true then
+                tab:CreateKeybind({
+                    Name = "UI Toggle Keybind",
+                    Callback = function(keyName)
+                        PuckUI:Notify({
+                            Title = "UI Keybind",
+                            Content = "All PuckAFK UIs now use " .. tostring(keyName),
+                            Duration = 2.5,
+                        })
+                    end,
+                })
+            end
+
+            tab:CreateDropdown({
+                Name = "UI Layout",
+                Options = {"Auto", "Desktop", "Phone"},
+                CurrentOption = {normalizeLayoutMode(SharedUIState.LayoutMode)},
+                NoConfig = true,
+                Callback = function(option)
+                    local selected = normalizeDropdownValue(option)
+                    window:SetLayoutMode(selected)
                 end,
             })
-            tab:CreateLabel("Click the box, then press any key. Escape cancels.")
+
+            tab:CreateSlider({
+                Name = "UI Size",
+                Range = {75, 125},
+                Increment = 5,
+                CurrentValue = math.clamp(tonumber(SharedUIState.UIScalePercent) or 100, 75, 125),
+                Suffix = "%",
+                NoConfig = true,
+                Callback = function(value)
+                    window:SetUIScalePercent(value)
+                end,
+            })
+
+            window.DeviceStatusLabel = tab:CreateLabel("Detecting display...")
+            if settings.DisableBuiltInUIKeybind ~= true then
+                tab:CreateLabel("Click the key box, then press any key. Escape cancels.")
+            end
         end
 
         if string.lower(tab.Name) == "settings"
@@ -2422,6 +2732,12 @@ function PuckUI:CreateWindow(settings)
                 end
             end)
         end
+
+        task.defer(function()
+            if window.ScreenGui and window.ScreenGui.Parent then
+                window:ApplyResponsiveLayout()
+            end
+        end)
 
         return tab
     end
@@ -2602,8 +2918,9 @@ function PuckUI:CreateWindow(settings)
         columnsHost.Visible = not window.Minimized
 
         if window.Minimized then
-            main.Size = UDim2.fromOffset(width, 27)
-            shadow.Size = UDim2.fromOffset(width, 27)
+            local miniHeight = window.ResolvedLayout == "Phone" and 34 or 27
+            main.Size = UDim2.fromOffset(window.FullSize.X.Offset, miniHeight)
+            shadow.Size = main.Size
             minimize.Text = "+"
         else
             main.Size = window.FullSize
@@ -2672,6 +2989,8 @@ function PuckUI:CreateWindow(settings)
             window:Toggle()
         end
     end)
+
+    window:ApplyResponsiveLayout()
 
     -- Config autosave watches control values instead of requiring every game
     -- script to manually call Save after each callback.
