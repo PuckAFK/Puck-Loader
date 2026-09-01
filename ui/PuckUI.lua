@@ -1016,9 +1016,13 @@ function PuckUI:CreateWindow(settings)
         if self.Minimized then
             main.Size = UDim2.fromOffset(baseWidth, phoneLayout and 34 or 27)
             shadow.Size = main.Size
+            -- A shadow offset looks like a black bar underneath the collapsed
+            -- title bar. Hide it completely while minimized.
+            shadow.Visible = false
         else
             main.Size = self.FullSize
             shadow.Size = self.FullSize
+            shadow.Visible = self.Visible ~= false
         end
 
         notificationHolder.Size = UDim2.fromOffset(
@@ -2960,10 +2964,12 @@ function PuckUI:CreateWindow(settings)
             local miniHeight = window.ResolvedLayout == "Phone" and 34 or 27
             main.Size = UDim2.fromOffset(window.FullSize.X.Offset, miniHeight)
             shadow.Size = main.Size
+            shadow.Visible = false
             minimize.Text = "+"
         else
             main.Size = window.FullSize
             shadow.Size = window.FullSize
+            shadow.Visible = window.Visible ~= false
             minimize.Text = "-"
         end
     end)
