@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.5 - Responsive Release / Global Keybind + Configs
+    PuckUI v3.5.1 - Responsive Center Fix / Global Keybind + Configs
     Shared PuckAFK game-script UI.
 
     Combined from both supplied PuckUI variants:
@@ -20,7 +20,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.5.0",
+    Version = "3.5.1",
     Flags = {},
     Window = nil,
 }
@@ -870,6 +870,7 @@ function PuckUI:CreateWindow(settings)
         CloseCallback = nil,
         Minimized = false,
         Visible = true,
+        UserPositioned = false,
         FullSize = UDim2.fromOffset(width, height),
         BaseWidth = width,
         BaseHeight = height,
@@ -910,9 +911,34 @@ function PuckUI:CreateWindow(settings)
         end
     end
 
+    function window:Center()
+        if not self.Main or not self.Main.Parent then
+            return
+        end
+        self.UserPositioned = false
+        self.Main.AnchorPoint = Vector2.new(0.5, 0.5)
+        self.Main.Position = UDim2.fromScale(0.5, 0.5)
+        if shadow and shadow.Parent then
+            shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+            shadow.Position = UDim2.new(0.5, 4, 0.5, 4)
+        end
+    end
+
     function window:ApplyResponsiveLayout()
         if not self.ScreenGui or not self.ScreenGui.Parent then
             return
+        end
+
+        -- Until the user intentionally drags the window, responsive reflows
+        -- always keep it centered. This also repairs old scripts that try to
+        -- apply legacy half-width/half-height offsets to an anchored window.
+        if not self.UserPositioned then
+            self.Main.AnchorPoint = Vector2.new(0.5, 0.5)
+            self.Main.Position = UDim2.fromScale(0.5, 0.5)
+            if shadow and shadow.Parent then
+                shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+                shadow.Position = UDim2.new(0.5, 4, 0.5, 4)
+            end
         end
 
         local viewport = getViewportSize()
@@ -1463,6 +1489,7 @@ function PuckUI:CreateWindow(settings)
 
             closeOpenPopup()
             dragging = true
+            window.UserPositioned = true
             dragStart = input.Position
             startPosition = main.Position
 
