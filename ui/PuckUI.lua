@@ -771,7 +771,9 @@ function PuckUI:CreateWindow(settings)
         Position = UDim2.fromOffset(2, 27),
         Size = UDim2.new(1, -4, 0, 22),
         BackgroundColor3 = Theme.Tab,
-        BackgroundTransparency = 1,
+        -- Keep the tab strip opaque so the accent separator above it cannot
+        -- visually bleed through the tab labels on phone / scaled layouts.
+        BackgroundTransparency = 0,
         BorderSizePixel = 0,
         CanvasSize = UDim2.new(),
         AutomaticCanvasSize = Enum.AutomaticSize.X,
