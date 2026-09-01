@@ -1873,22 +1873,25 @@ function PuckUI:CreateWindow(settings)
                 Parent = frame,
             })
 
+            -- Section accent is a real top border. The title sits below it rather
+            -- than being centred on the line, which avoids the line-through-text
+            -- look at phone resolutions and non-100% UI scales.
             local topAccentLine = create("Frame", {
                 Position = UDim2.fromOffset(0, 0),
                 Size = UDim2.new(1, 0, 0, 1),
                 BackgroundColor3 = Theme.Accent,
                 BorderSizePixel = 0,
-                ZIndex = 6,
+                ZIndex = 7,
                 Parent = frame,
             })
             table.insert(window.AccentObjects, topAccentLine)
 
-            local titleWidth = TextService:GetTextSize(section.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 12
+            local titleWidth = TextService:GetTextSize(section.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 6
 
             local headerPatch = create("Frame", {
-                Position = UDim2.fromOffset(12, -7),
-                Size = UDim2.fromOffset(titleWidth, 14),
-                BackgroundColor3 = Theme.Main,
+                Position = UDim2.fromOffset(8, 3),
+                Size = UDim2.fromOffset(titleWidth, 16),
+                BackgroundTransparency = 1,
                 BorderSizePixel = 0,
                 ZIndex = 7,
                 Parent = frame,
@@ -1897,11 +1900,11 @@ function PuckUI:CreateWindow(settings)
             local header = codeLabel(headerPatch, section.Name, 12, Theme.Text, 8)
             header.Position = UDim2.fromOffset(0, 0)
             header.Size = UDim2.new(1, 0, 1, 0)
-            header.TextXAlignment = Enum.TextXAlignment.Center
+            header.TextXAlignment = Enum.TextXAlignment.Left
 
             local body = create("Frame", {
                 Name = "Body",
-                Position = UDim2.fromOffset(8, 14),
+                Position = UDim2.fromOffset(8, 22),
                 Size = UDim2.new(1, -16, 0, 0),
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
@@ -1924,7 +1927,7 @@ function PuckUI:CreateWindow(settings)
             local function updateSectionSize()
                 local bodyHeight = math.max(0, bodyLayout.AbsoluteContentSize.Y + 8)
                 body.Size = UDim2.new(1, -16, 0, bodyHeight)
-                frame.Size = UDim2.new(1, -2, 0, math.max(28, 14 + bodyHeight))
+                frame.Size = UDim2.new(1, -2, 0, math.max(36, 22 + bodyHeight))
             end
 
             bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -1941,7 +1944,7 @@ function PuckUI:CreateWindow(settings)
             function section:Set(newName)
                 self.Name = tostring(newName or "")
                 header.Text = self.Name
-                local newWidth = TextService:GetTextSize(self.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 12
+                local newWidth = TextService:GetTextSize(self.Name, 12, Enum.Font.Code, Vector2.new(1000, 16)).X + 6
                 headerPatch.Size = UDim2.fromOffset(newWidth, 14)
             end
 
