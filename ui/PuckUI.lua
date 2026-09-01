@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.5.1 - Responsive Center Fix / Global Keybind + Configs
+    PuckUI v3.5.8 - Minimize / Restore Screen Guard
     Shared PuckAFK game-script UI.
 
     Combined from both supplied PuckUI variants:
@@ -20,7 +20,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.5.1",
+    Version = "3.5.8",
     Flags = {},
     Window = nil,
 }
@@ -926,7 +926,7 @@ function PuckUI:CreateWindow(settings)
         end
     end
 
-    function window:ClampToViewport(padding)
+    function window:ClampToViewport(padding, boundsMode)
         if not self.Main or not self.Main.Parent then
             return
         end
@@ -938,8 +938,22 @@ function PuckUI:CreateWindow(settings)
         local viewport = getViewportSize()
         local margin = math.max(4, tonumber(padding) or 6)
         local size = self.Main.AbsoluteSize
-        local pos = self.Main.AbsolutePosition
 
+        -- Restoring from minimized state must clamp against the full rendered
+        -- window footprint, not just the small collapsed title bar.
+        if boundsMode == "Expanded" then
+            local uiScale = 1
+            if self.MainScale then
+                uiScale = math.max(0.01, tonumber(self.MainScale.Scale) or 1)
+            end
+
+            size = Vector2.new(
+                math.max(1, self.FullSize.X.Offset * uiScale),
+                math.max(1, self.FullSize.Y.Offset * uiScale)
+            )
+        end
+
+        local pos = self.Main.AbsolutePosition
         local maxX = math.max(margin, viewport.X - size.X - margin)
         local maxY = math.max(margin, viewport.Y - size.Y - margin)
         local clampedX = math.clamp(pos.X, margin, maxX)
@@ -1070,7 +1084,10 @@ function PuckUI:CreateWindow(settings)
         end
 
         if self.UserPositioned then
-            self:ClampToViewport(phoneLayout and 6 or 8)
+            self:ClampToViewport(
+                phoneLayout and 6 or 8,
+                self.Minimized and "Current" or "Expanded"
+            )
         end
     end
 
@@ -1525,7 +1542,12 @@ function PuckUI:CreateWindow(settings)
         )
         main.Position = newPos
         shadow.Position = UDim2.new(newPos.X.Scale, newPos.X.Offset + 4, newPos.Y.Scale, newPos.Y.Offset + 4)
-        window:ClampToViewport(6)
+
+        -- Both expanded and minimized states remain fully reachable.
+        window:ClampToViewport(
+            6,
+            window.Minimized and "Current" or "Expanded"
+        )
     end
 
     dragHandle.InputBegan:Connect(function(input)
@@ -3012,11 +3034,32 @@ function PuckUI:CreateWindow(settings)
             shadow.Size = main.Size
             shadow.Visible = false
             minimize.Text = "+"
+
+            -- The collapsed title bar itself can never leave the viewport.
+            window:ClampToViewport(6, "Current")
         else
             main.Size = window.FullSize
             shadow.Size = window.FullSize
             shadow.Visible = window.Visible ~= false
             minimize.Text = "-"
+
+            -- Restore only to a position where the ENTIRE expanded window fits.
+            window:ClampToViewport(
+                window.ResolvedLayout == "Phone" and 6 or 8,
+                "Expanded"
+            )
+
+            -- Re-check once Roblox has refreshed AbsoluteSize after the resize.
+            task.defer(function()
+                if window.ScreenGui
+                    and window.ScreenGui.Parent
+                    and not window.Minimized then
+                    window:ClampToViewport(
+                        window.ResolvedLayout == "Phone" and 6 or 8,
+                        "Expanded"
+                    )
+                end
+            end)
         end
     end)
 
