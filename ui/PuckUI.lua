@@ -2956,9 +2956,12 @@ function PuckUI:CreateWindow(settings)
         window:ClosePopup()
         window.Minimized = not window.Minimized
 
-        tabBar.Visible = not window.Minimized
-        accentTop.Visible = not window.Minimized
-        columnsHost.Visible = not window.Minimized
+        local expanded = not window.Minimized
+        tabBar.Visible = expanded
+        accentTop.Visible = expanded
+        tabSeparatorDark.Visible = expanded
+        tabSeparator.Visible = expanded
+        columnsHost.Visible = expanded
 
         if window.Minimized then
             local miniHeight = window.ResolvedLayout == "Phone" and 34 or 27
