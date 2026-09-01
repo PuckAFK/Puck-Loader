@@ -795,7 +795,7 @@ function PuckUI:CreateWindow(settings)
 
     -- Separator under the tab row. Keeping this separate from the active-tab
     -- highlight prevents the header from looking broken when only one tab exists.
-    create("Frame", {
+    local tabSeparatorDark = create("Frame", {
         Name = "TabSeparatorDark",
         Position = UDim2.fromOffset(2, 49),
         Size = UDim2.new(1, -4, 0, 1),
@@ -805,7 +805,7 @@ function PuckUI:CreateWindow(settings)
         Parent = main,
     })
 
-    create("Frame", {
+    local tabSeparator = create("Frame", {
         Name = "TabSeparator",
         Position = UDim2.fromOffset(2, 50),
         Size = UDim2.new(1, -4, 0, 1),
@@ -990,6 +990,13 @@ function PuckUI:CreateWindow(settings)
         accentTop.Position = UDim2.fromOffset(2, phoneLayout and 33 or 26)
         tabBar.Position = UDim2.fromOffset(2, tabY)
         tabBar.Size = UDim2.new(1, -4, 0, tabHeight)
+
+        -- The tab separators must follow the responsive tab bar. Leaving these
+        -- at the desktop Y coordinate makes the dark line cut through Phone tabs.
+        local separatorY = tabY + tabHeight
+        tabSeparatorDark.Position = UDim2.fromOffset(2, separatorY)
+        tabSeparator.Position = UDim2.fromOffset(2, separatorY + 1)
+
         columnsHost.Position = UDim2.fromOffset(phoneLayout and 5 or 8, contentY)
         columnsHost.Size = UDim2.new(1, phoneLayout and -10 or -16, 1, -bottomPad)
 
