@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub - Free Animated Loader
+    PuckAFK Hub - Responsive Release Loader
 
     Supported places:
       Get Rich ASAP          : 128481067661991
@@ -32,6 +32,81 @@ local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local VirtualUser = game:GetService("VirtualUser")
+local HttpService = game:GetService("HttpService")
+
+ENV.__PUCKAFK_UI_SHARED_STATE = ENV.__PUCKAFK_UI_SHARED_STATE or {
+    ToggleKeyName = "K",
+    LayoutMode = "Auto",
+    UIScalePercent = 100,
+}
+
+local SHARED_UI_STATE = ENV.__PUCKAFK_UI_SHARED_STATE
+SHARED_UI_STATE.LayoutMode = tostring(SHARED_UI_STATE.LayoutMode or "Auto")
+SHARED_UI_STATE.UIScalePercent = math.clamp(tonumber(SHARED_UI_STATE.UIScalePercent) or 100, 75, 125)
+
+local function normalizeLayoutMode(value)
+    local lowered = string.lower(tostring(value or "Auto"))
+    if lowered == "phone" or lowered == "mobile" then
+        return "Phone"
+    elseif lowered == "desktop" or lowered == "pc" then
+        return "Desktop"
+    end
+    return "Auto"
+end
+
+local function getViewportSize()
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    if viewport.X < 1 or viewport.Y < 1 then
+        return Vector2.new(1280, 720)
+    end
+    return viewport
+end
+
+local function resolveLayoutMode(mode, viewport)
+    mode = normalizeLayoutMode(mode)
+    if mode ~= "Auto" then
+        return mode
+    end
+    viewport = viewport or getViewportSize()
+    local smallViewport = viewport.X < 760 or viewport.Y < 500
+    local touchPhone = UserInputService.TouchEnabled and math.min(viewport.X, viewport.Y) <= 720
+    return (smallViewport or touchPhone) and "Phone" or "Desktop"
+end
+
+local function loadSharedUIPreferences()
+    if type(readfile) ~= "function" or type(isfile) ~= "function" then
+        return
+    end
+
+    local root = tostring((ENV.__PUCKAFK_CONFIG_SHARED_STATE or {}).Root or "PuckAFK/Configs")
+    local path = root .. "/_ui_layout.json"
+    local okExists, exists = pcall(isfile, path)
+    if not okExists or not exists then
+        return
+    end
+
+    local okRead, text = pcall(readfile, path)
+    if not okRead or type(text) ~= "string" then
+        return
+    end
+
+    local okDecode, data = pcall(function()
+        return HttpService:JSONDecode(text)
+    end)
+    if not okDecode or type(data) ~= "table" then
+        return
+    end
+
+    SHARED_UI_STATE.LayoutMode = normalizeLayoutMode(data.LayoutMode or SHARED_UI_STATE.LayoutMode)
+    SHARED_UI_STATE.UIScalePercent = math.clamp(
+        tonumber(data.UIScalePercent) or SHARED_UI_STATE.UIScalePercent or 100,
+        75,
+        125
+    )
+end
+
+loadSharedUIPreferences()
 
 
 -- =========================
@@ -163,9 +238,15 @@ local THEME = {
 
 local function create(className, properties)
     local object = Instance.new(className)
+    local viewport = getViewportSize()
+    local phoneLayout = resolveLayoutMode(SHARED_UI_STATE.LayoutMode, viewport) == "Phone"
 
     for key, value in pairs(properties or {}) do
-        object[key] = value
+        if key == "TextSize" and phoneLayout and type(value) == "number" then
+            object[key] = math.floor(value * 1.10 + 0.5)
+        else
+            object[key] = value
+        end
     end
 
     return object
@@ -282,6 +363,38 @@ getGuiParent(gui)
 
 local WINDOW_WIDTH = 480
 local WINDOW_HEIGHT = 260
+local EXPANDED_HEIGHT = 365
+local LOADER_LAYOUT = "Desktop"
+local LOADER_EXPANDED = false
+local LOADER_SCALE = 1
+
+local function calculateLoaderLayout()
+    local viewport = getViewportSize()
+    local resolved = resolveLayoutMode(SHARED_UI_STATE.LayoutMode, viewport)
+    local phoneLayout = resolved == "Phone"
+    local landscape = viewport.X > viewport.Y
+
+    if phoneLayout then
+        WINDOW_WIDTH = landscape and 500 or 350
+        WINDOW_HEIGHT = landscape and 235 or 260
+        EXPANDED_HEIGHT = landscape and 350 or 365
+    else
+        WINDOW_WIDTH = 480
+        WINDOW_HEIGHT = 260
+        EXPANDED_HEIGHT = 365
+    end
+
+    local requestedScale = math.clamp(tonumber(SHARED_UI_STATE.UIScalePercent) or 100, 75, 125) / 100
+    local fitScale = math.min(
+        (viewport.X - 16) / math.max(WINDOW_WIDTH, 1),
+        (viewport.Y - 16) / math.max(EXPANDED_HEIGHT, 1)
+    )
+
+    LOADER_LAYOUT = resolved
+    LOADER_SCALE = math.max(0.65, math.min(requestedScale, fitScale))
+end
+
+calculateLoaderLayout()
 local targetCardSize = UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT)
 
 local shadow = create("Frame", {
@@ -310,6 +423,53 @@ local card = create("CanvasGroup", {
     ZIndex = 2,
     Parent = gui,
 })
+
+local cardScale = create("UIScale", {Scale = LOADER_SCALE, Parent = card})
+local shadowScale = create("UIScale", {Scale = LOADER_SCALE, Parent = shadow})
+
+local function applyLoaderResponsiveLayout()
+    if not gui.Parent then
+        return
+    end
+
+    calculateLoaderLayout()
+    targetCardSize = UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT)
+    cardScale.Scale = LOADER_SCALE
+    shadowScale.Scale = LOADER_SCALE
+
+    local desired = LOADER_EXPANDED
+        and UDim2.fromOffset(WINDOW_WIDTH, EXPANDED_HEIGHT)
+        or targetCardSize
+    card.Size = desired
+    shadow.Size = desired
+end
+
+local viewportConnection = nil
+local function attachViewportListener()
+    if viewportConnection then
+        pcall(function() viewportConnection:Disconnect() end)
+        viewportConnection = nil
+    end
+    local camera = workspace.CurrentCamera
+    if camera then
+        viewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+            task.defer(applyLoaderResponsiveLayout)
+        end)
+    end
+end
+
+attachViewportListener()
+local cameraConnection = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    attachViewportListener()
+    task.defer(applyLoaderResponsiveLayout)
+end)
+
+gui.AncestryChanged:Connect(function(_, parent)
+    if parent == nil then
+        if viewportConnection then pcall(function() viewportConnection:Disconnect() end) end
+        if cameraConnection then pcall(function() cameraConnection:Disconnect() end) end
+    end
+end)
 
 -- -------------------------------------------------------------------------
 -- Procedural PuckUI rose / damask background
@@ -581,7 +741,7 @@ local contentHost = create("Frame", {
     Name = "ContentHost",
     AnchorPoint = Vector2.new(0.5, 0),
     Position = UDim2.new(0.5, 0, 0, 58),
-    Size = UDim2.new(1, -48, 0, 132),
+    Size = UDim2.new(1, LOADER_LAYOUT == "Phone" and -28 or -48, 0, 132),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ClipsDescendants = true,
@@ -944,6 +1104,7 @@ local function chooseRouteManually(placeId)
         end
 
         open = openState == true
+        LOADER_EXPANDED = open
 
         if open then
             menu.Visible = true
@@ -952,13 +1113,13 @@ local function chooseRouteManually(placeId)
             tween(
                 card,
                 0.18,
-                {Size = UDim2.fromOffset(WINDOW_WIDTH, 365)}
+                {Size = UDim2.fromOffset(WINDOW_WIDTH, EXPANDED_HEIGHT)}
             )
 
             tween(
                 shadow,
                 0.18,
-                {Size = UDim2.fromOffset(WINDOW_WIDTH, 365)}
+                {Size = UDim2.fromOffset(WINDOW_WIDTH, EXPANDED_HEIGHT)}
             )
 
             tween(
@@ -1123,9 +1284,9 @@ local function chooseRouteManually(placeId)
     end
 
 
+    LOADER_EXPANDED = false
     card.Size = targetCardSize
     shadow.Size = targetCardSize
-
 
     return selectedRoute
 end
