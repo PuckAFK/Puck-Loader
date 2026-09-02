@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.5.8 - Minimize / Restore Screen Guard
+    PuckUI v3.5.9 - Cursor-Locked Drag Fix
     Shared PuckAFK game-script UI.
 
     Combined from both supplied PuckUI variants:
@@ -20,7 +20,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.5.8",
+    Version = "3.5.9",
     Flags = {},
     Window = nil,
 }
@@ -1520,34 +1520,66 @@ function PuckUI:CreateWindow(settings)
     end))
 
     ------------------------------------------------------------------------
-    -- Reliable dragging
+    -- Cursor-locked dragging
+    --
+    -- Keep the exact point grabbed on the title bar underneath the pointer.
+    -- The old implementation changed AnchorPoint from 0.5 to 0 at drag start
+    -- and then used Position deltas. With UIScale / responsive layouts that
+    -- could move the rendered top-left before the first mouse movement, making
+    -- the window jump upward and leaving the cursor around the middle of it.
     ------------------------------------------------------------------------
     local dragging = false
-    local dragInput = nil
+    local activeTouch = nil
     local closeOpenPopup = function() end
-    local dragStart = nil
-    local startPosition = nil
+    local dragGrabOffset = nil
 
-    local function updateDrag(input)
-        if not dragging or not dragStart or not startPosition then
+    local function setWindowFromTopLeft(topLeft)
+        if not topLeft or not main or not main.Parent then
             return
         end
 
-        local delta = input.Position - dragStart
-        local newPos = UDim2.new(
-            startPosition.X.Scale,
-            startPosition.X.Offset + delta.X,
-            startPosition.Y.Scale,
-            startPosition.Y.Offset + delta.Y
-        )
-        main.Position = newPos
-        shadow.Position = UDim2.new(newPos.X.Scale, newPos.X.Offset + 4, newPos.Y.Scale, newPos.Y.Offset + 4)
+        local viewport = getViewportSize()
+        local margin = 6
+        local size = main.AbsoluteSize
 
-        -- Both expanded and minimized states remain fully reachable.
-        window:ClampToViewport(
-            6,
-            window.Minimized and "Current" or "Expanded"
+        -- Clamp the desired rendered top-left directly. Do not call
+        -- ClampToViewport() while dragging because that helper may normalize the
+        -- AnchorPoint/Position representation and disturb the cursor grab point.
+        local maxX = math.max(margin, viewport.X - size.X - margin)
+        local maxY = math.max(margin, viewport.Y - size.Y - margin)
+        local x = math.clamp(topLeft.X, margin, maxX)
+        local y = math.clamp(topLeft.Y, margin, maxY)
+
+        -- Position is the screen-space location of the frame's anchor. Preserve
+        -- whichever AnchorPoint the responsive layout currently uses instead of
+        -- changing it when the user first clicks the title bar.
+        local anchor = main.AnchorPoint
+        local anchorPosition = Vector2.new(
+            x + (size.X * anchor.X),
+            y + (size.Y * anchor.Y)
         )
+
+        main.Position = UDim2.fromOffset(anchorPosition.X, anchorPosition.Y)
+
+        if shadow and shadow.Parent then
+            shadow.AnchorPoint = anchor
+            shadow.Position = UDim2.fromOffset(anchorPosition.X + 4, anchorPosition.Y + 4)
+        end
+    end
+
+    local function updateDrag(input)
+        if not dragging or not dragGrabOffset or not input then
+            return
+        end
+
+        -- The grab offset is measured from the rendered top-left to the exact
+        -- mouse/touch point that started the drag. Keeping it constant means the
+        -- cursor can never drift from the title-bar point the user grabbed.
+        local desiredTopLeft = Vector2.new(
+            input.Position.X - dragGrabOffset.X,
+            input.Position.Y - dragGrabOffset.Y
+        )
+        setWindowFromTopLeft(desiredTopLeft)
     end
 
     dragHandle.InputBegan:Connect(function(input)
@@ -1556,46 +1588,49 @@ function PuckUI:CreateWindow(settings)
 
             closeOpenPopup()
             dragging = true
-
-            if not window.UserPositioned then
-                local absPos = main.AbsolutePosition
-                main.AnchorPoint = Vector2.new(0, 0)
-                main.Position = UDim2.fromOffset(absPos.X, absPos.Y)
-                if shadow and shadow.Parent then
-                    shadow.AnchorPoint = Vector2.new(0, 0)
-                    shadow.Position = UDim2.fromOffset(absPos.X + 4, absPos.Y + 4)
-                end
-            end
-
             window.UserPositioned = true
-            dragStart = input.Position
-            startPosition = main.Position
+
+            local absolute = main.AbsolutePosition
+            dragGrabOffset = Vector2.new(
+                input.Position.X - absolute.X,
+                input.Position.Y - absolute.Y
+            )
+
+            activeTouch = input.UserInputType == Enum.UserInputType.Touch and input or nil
 
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
+                    activeTouch = nil
+                    dragGrabOffset = nil
                 end
             end)
         end
     end)
 
-    dragHandle.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-
+    -- Mouse movement continues even after the cursor leaves the thin title bar.
+    -- Touch movement is restricted to the finger that actually started dragging.
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and input == dragInput then
+        if not dragging then
+            return
+        end
+
+        if activeTouch then
+            if input == activeTouch then
+                updateDrag(input)
+            end
+        elseif input.UserInputType == Enum.UserInputType.MouseMovement then
             updateDrag(input)
         end
     end)
 
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
+        local mouseEnded = input.UserInputType == Enum.UserInputType.MouseButton1
+        local touchEnded = activeTouch ~= nil and input == activeTouch
+        if mouseEnded or touchEnded then
             dragging = false
+            activeTouch = nil
+            dragGrabOffset = nil
         end
     end)
 
