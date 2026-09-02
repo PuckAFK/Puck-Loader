@@ -1,10 +1,15 @@
 --[[
-    PuckUI v3.7.1 - WindowMover Drag Overhaul + Off-Screen Clamp Fix
+    PuckUI v3.7.2 - WindowMover Drag Overhaul + Off-Screen Clamp Fixes
     Shared PuckAFK game-script UI.
 
     v3.7.1 change: dragging via the title bar now clamps live to the
     viewport (same margin math as ClampToViewport), so the window can
     no longer be dragged partially or fully off any screen edge.
+
+    v3.7.2 change: shrinking/resizing the game window (ViewportSize or
+    CurrentCamera change) now re-clamps the window into the new bounds
+    right after ApplyResponsiveLayout runs, so a window that was fine
+    at the old size can no longer end up off-screen after a resize.
 
     Combined from both supplied PuckUI variants:
       - Uses the fuller v2.2 control/API implementation as the functional base
@@ -24,7 +29,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.7.1",
+    Version = "3.7.2",
     Flags = {},
     Window = nil,
 }
@@ -1517,6 +1522,10 @@ function PuckUI:CreateWindow(settings)
             task.defer(function()
                 if window.ScreenGui and window.ScreenGui.Parent then
                     window:ApplyResponsiveLayout()
+                    window:ClampToViewport(
+                        window.Minimized and 6 or (window.ResolvedLayout == "Phone" and 6 or 8),
+                        window.Minimized and "Current" or "Expanded"
+                    )
                 end
             end)
         end))
@@ -1528,6 +1537,10 @@ function PuckUI:CreateWindow(settings)
         task.defer(function()
             if window.ScreenGui and window.ScreenGui.Parent then
                 window:ApplyResponsiveLayout()
+                window:ClampToViewport(
+                    window.Minimized and 6 or (window.ResolvedLayout == "Phone" and 6 or 8),
+                    window.Minimized and "Current" or "Expanded"
+                )
             end
         end)
     end))
