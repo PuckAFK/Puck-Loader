@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.6.0 - Stable Delta Drag Fix
+    PuckUI v3.6.1 - No-Snap Release Drag Fix
     Shared PuckAFK game-script UI.
 
     Combined from both supplied PuckUI variants:
@@ -20,7 +20,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.6.0",
+    Version = "3.6.1",
     Flags = {},
     Window = nil,
 }
@@ -953,17 +953,55 @@ function PuckUI:CreateWindow(settings)
             )
         end
 
-        local pos = self.Main.AbsolutePosition
+        -- Preserve the exact AnchorPoint and UDim scale components. The old
+        -- clamp converted the window to AnchorPoint (0,0) after a drag, which
+        -- caused the visible snap on mouse release. Compute the rendered
+        -- top-left from the current anchor position instead, then only adjust
+        -- the Position offsets if the window is actually outside the viewport.
+        local current = self.Main.Position
+        local anchor = self.Main.AnchorPoint
+        local anchorPixel = Vector2.new(
+            viewport.X * current.X.Scale + current.X.Offset,
+            viewport.Y * current.Y.Scale + current.Y.Offset
+        )
+        local topLeft = Vector2.new(
+            anchorPixel.X - size.X * anchor.X,
+            anchorPixel.Y - size.Y * anchor.Y
+        )
+
         local maxX = math.max(margin, viewport.X - size.X - margin)
         local maxY = math.max(margin, viewport.Y - size.Y - margin)
-        local clampedX = math.clamp(pos.X, margin, maxX)
-        local clampedY = math.clamp(pos.Y, margin, maxY)
+        local clampedX = math.clamp(topLeft.X, margin, maxX)
+        local clampedY = math.clamp(topLeft.Y, margin, maxY)
 
-        self.Main.AnchorPoint = Vector2.new(0, 0)
-        self.Main.Position = UDim2.fromOffset(clampedX, clampedY)
+        -- If already inside the viewport, leave Position completely untouched.
+        -- This is important because even an equivalent representation can make
+        -- a scaled GUI appear to jump in some Roblox/executor environments.
+        if math.abs(clampedX - topLeft.X) < 0.01
+            and math.abs(clampedY - topLeft.Y) < 0.01 then
+            return
+        end
+
+        local newAnchorPixel = Vector2.new(
+            clampedX + size.X * anchor.X,
+            clampedY + size.Y * anchor.Y
+        )
+        local newPos = UDim2.new(
+            current.X.Scale,
+            newAnchorPixel.X - viewport.X * current.X.Scale,
+            current.Y.Scale,
+            newAnchorPixel.Y - viewport.Y * current.Y.Scale
+        )
+
+        self.Main.Position = newPos
         if shadow and shadow.Parent then
-            shadow.AnchorPoint = Vector2.new(0, 0)
-            shadow.Position = UDim2.fromOffset(clampedX + 4, clampedY + 4)
+            shadow.AnchorPoint = anchor
+            shadow.Position = UDim2.new(
+                newPos.X.Scale,
+                newPos.X.Offset + 4,
+                newPos.Y.Scale,
+                newPos.Y.Offset + 4
+            )
         end
     end
 
@@ -1576,17 +1614,11 @@ function PuckUI:CreateWindow(settings)
         dragStart = nil
         startPosition = nil
 
-        -- Clamp only after release. Clamping while the cursor is moving can
-        -- change the window position independently of the pointer and causes the
-        -- exact "cursor ends up in the middle" feeling at screen edges.
-        task.defer(function()
-            if window.ScreenGui and window.ScreenGui.Parent then
-                window:ClampToViewport(
-                    6,
-                    window.Minimized and "Current" or "Expanded"
-                )
-            end
-        end)
+        -- IMPORTANT: do not touch Main.Position when the pointer is released.
+        -- Common Roblox draggable implementations simply end the drag here.
+        -- Any post-release clamp/re-anchor causes the exact snap/jump that was
+        -- still visible in v3.6.0. Viewport clamping is reserved for explicit
+        -- layout changes such as minimize/restore or viewport resize.
     end
 
     dragHandle.InputBegan:Connect(function(input)
