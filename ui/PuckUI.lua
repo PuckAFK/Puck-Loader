@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.7.2 - WindowMover Drag Overhaul + Off-Screen Clamp Fixes
+    PuckUI v3.7.3 - Settled Viewport Resize Clamp
     Shared PuckAFK game-script UI.
 
     v3.7.1 change: dragging via the title bar now clamps live to the
@@ -7,9 +7,12 @@
     no longer be dragged partially or fully off any screen edge.
 
     v3.7.2 change: shrinking/resizing the game window (ViewportSize or
-    CurrentCamera change) now re-clamps the window into the new bounds
-    right after ApplyResponsiveLayout runs, so a window that was fine
-    at the old size can no longer end up off-screen after a resize.
+    CurrentCamera change) now re-clamps the window into the new bounds.
+
+    v3.7.3 change: viewport resize handling now waits across multiple render
+    frames and clamps from Main.AbsolutePosition / Main.AbsoluteSize after the
+    responsive layout has actually settled. This fixes fullscreen -> small
+    window resizing where Roblox reports intermediate/stale dimensions.
 
     Combined from both supplied PuckUI variants:
       - Uses the fuller v2.2 control/API implementation as the functional base
@@ -23,13 +26,14 @@ local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
 local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.7.2",
+    Version = "3.7.3",
     Flags = {},
     Window = nil,
 }
@@ -998,6 +1002,61 @@ function PuckUI:CreateWindow(settings)
         self.Mover.Position = UDim2.fromOffset(nx, ny)
     end
 
+    -- Clamp from Roblox's ACTUAL rendered rectangle. This is used after a
+    -- viewport resize has had time to settle, avoiding stale UIScale/layout math.
+    function window:ClampRenderedToViewport(padding)
+        if not self.Mover or not self.Mover.Parent or not self.Main or not self.Main.Parent then
+            return
+        end
+        if not self.UserPositioned then
+            self:Center()
+            return
+        end
+
+        local viewport = getViewportSize()
+        local margin = math.max(4, tonumber(padding) or 6)
+        local topLeft = self.Main.AbsolutePosition
+        local size = self.Main.AbsoluteSize
+        local right = topLeft.X + size.X
+        local bottom = topLeft.Y + size.Y
+        local dx, dy = 0, 0
+
+        if size.X + (margin * 2) <= viewport.X then
+            if topLeft.X < margin then
+                dx = margin - topLeft.X
+            elseif right > viewport.X - margin then
+                dx = (viewport.X - margin) - right
+            end
+        else
+            -- Responsive fitting should normally prevent this, but if Roblox is
+            -- still settling an intermediate oversized frame, keep its left edge
+            -- reachable until the next settle pass shrinks it correctly.
+            dx = margin - topLeft.X
+        end
+
+        if size.Y + (margin * 2) <= viewport.Y then
+            if topLeft.Y < margin then
+                dy = margin - topLeft.Y
+            elseif bottom > viewport.Y - margin then
+                dy = (viewport.Y - margin) - bottom
+            end
+        else
+            dy = margin - topLeft.Y
+        end
+
+        if math.abs(dx) < 0.01 and math.abs(dy) < 0.01 then
+            return
+        end
+
+        local pos = self.Mover.Position
+        self.Mover.Position = UDim2.new(
+            pos.X.Scale,
+            pos.X.Offset + dx,
+            pos.Y.Scale,
+            pos.Y.Offset + dy
+        )
+    end
+
     function window:ApplyResponsiveLayout()
         if not self.ScreenGui or not self.ScreenGui.Parent then
             return
@@ -1514,35 +1573,62 @@ function PuckUI:CreateWindow(settings)
     self.Window = window
     SharedUIState.Windows[window] = true
 
+    -- Roblox desktop window resizing can report several intermediate viewport
+    -- sizes. A one-shot deferred clamp may therefore use stale dimensions. Each
+    -- resize starts a short settle sequence; newer resize events cancel older
+    -- sequences. The working drag system is not touched by this path.
+    local viewportSettleGeneration = 0
+
+    local function settleViewportResize()
+        viewportSettleGeneration += 1
+        local generation = viewportSettleGeneration
+
+        task.spawn(function()
+            if not (window.ScreenGui and window.ScreenGui.Parent) then
+                return
+            end
+
+            -- Apply immediately so the responsive mode/fit scale starts moving
+            -- toward the new desktop-window dimensions.
+            window:ApplyResponsiveLayout()
+
+            -- Re-check for several rendered frames. This covers the camera
+            -- viewport update, UIScale update and AbsoluteSize propagation.
+            for pass = 1, 6 do
+                RunService.RenderStepped:Wait()
+                if generation ~= viewportSettleGeneration then
+                    return
+                end
+                if not (window.ScreenGui and window.ScreenGui.Parent) then
+                    return
+                end
+
+                -- Re-run layout once more after Roblox has published the new
+                -- viewport, then clamp against the real rendered Main rectangle.
+                if pass == 2 or pass == 4 then
+                    window:ApplyResponsiveLayout()
+                end
+
+                local margin = window.Minimized and 6
+                    or (window.ResolvedLayout == "Phone" and 6 or 8)
+                window:ClampRenderedToViewport(margin)
+            end
+        end)
+    end
+
     local function connectViewportCamera(camera)
         if not camera then
             return
         end
         table.insert(window.ResponsiveConnections, camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-            task.defer(function()
-                if window.ScreenGui and window.ScreenGui.Parent then
-                    window:ApplyResponsiveLayout()
-                    window:ClampToViewport(
-                        window.Minimized and 6 or (window.ResolvedLayout == "Phone" and 6 or 8),
-                        window.Minimized and "Current" or "Expanded"
-                    )
-                end
-            end)
+            settleViewportResize()
         end))
     end
 
     connectViewportCamera(workspace.CurrentCamera)
     table.insert(window.ResponsiveConnections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
         connectViewportCamera(workspace.CurrentCamera)
-        task.defer(function()
-            if window.ScreenGui and window.ScreenGui.Parent then
-                window:ApplyResponsiveLayout()
-                window:ClampToViewport(
-                    window.Minimized and 6 or (window.ResolvedLayout == "Phone" and 6 or 8),
-                    window.Minimized and "Current" or "Expanded"
-                )
-            end
-        end)
+        settleViewportResize()
     end))
 
     ------------------------------------------------------------------------
