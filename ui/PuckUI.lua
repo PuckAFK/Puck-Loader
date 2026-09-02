@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.7.0 - WindowMover Drag Overhaul
+    PuckUI v3.7.1 - Screen-Bounded WindowMover Drag
     Shared PuckAFK game-script UI.
 
     Combined from both supplied PuckUI variants:
@@ -20,7 +20,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.7.0",
+    Version = "3.7.1",
     Flags = {},
     Window = nil,
 }
@@ -961,6 +961,22 @@ function PuckUI:CreateWindow(settings)
         )
     end
 
+    function window:_ClampMoverXY(x, y, padding, boundsMode)
+        local viewport = getViewportSize()
+        local margin = math.max(0, tonumber(padding) or 6)
+        local size = self:_RenderedWindowSize(boundsMode)
+
+        -- Keep the complete rendered window inside the viewport. Because this
+        -- clamps the unscaled WindowMover BEFORE Position is assigned, dragging
+        -- simply stops at the edge instead of snapping back afterward.
+        local minX = margin
+        local minY = margin
+        local maxX = math.max(minX, viewport.X - size.X - margin)
+        local maxY = math.max(minY, viewport.Y - size.Y - margin)
+
+        return math.clamp(x, minX, maxX), math.clamp(y, minY, maxY)
+    end
+
     function window:ClampToViewport(padding, boundsMode)
         if not self.Mover or not self.Mover.Parent then
             return
@@ -970,17 +986,12 @@ function PuckUI:CreateWindow(settings)
             return
         end
 
-        -- Clamp the unscaled mover only. Main/Shadow positions never change.
+        -- Clamp only the unscaled mover. Main/Shadow positions never change.
         local viewport = getViewportSize()
-        local margin = math.max(4, tonumber(padding) or 6)
-        local size = self:_RenderedWindowSize(boundsMode)
         local pos = self.Mover.Position
         local x = viewport.X * pos.X.Scale + pos.X.Offset
         local y = viewport.Y * pos.Y.Scale + pos.Y.Offset
-        local maxX = math.max(margin, viewport.X - size.X - margin)
-        local maxY = math.max(margin, viewport.Y - size.Y - margin)
-        local nx = math.clamp(x, margin, maxX)
-        local ny = math.clamp(y, margin, maxY)
+        local nx, ny = self:_ClampMoverXY(x, y, padding, boundsMode)
 
         if math.abs(nx - x) < 0.01 and math.abs(ny - y) < 0.01 then
             return
@@ -1533,14 +1544,17 @@ function PuckUI:CreateWindow(settings)
     --
     -- This intentionally mirrors the simple, proven dragStart/startPos/delta
     -- pattern used by established Roblox UI libraries, but applies it to an
-    -- unscaled outer mover instead of the visible/scaled Main frame.
+    -- unscaled outer mover instead of the visible/scaled Main frame. Candidate
+    -- mover coordinates are clamped before assignment so the window cannot be
+    -- dragged off-screen and never needs a post-drop correction.
     ------------------------------------------------------------------------
     local dragging = false
     local dragInput = nil
     local dragStart = nil
-    local startPosition = nil
+    local startPosition = nil -- Vector2 screen-space mover position at mouse-down
     local activeTouch = nil
     local closeOpenPopup = function() end
+    local DRAG_EDGE_MARGIN = 6
 
     local function mousePosition(input)
         if input and input.UserInputType == Enum.UserInputType.Touch then
@@ -1557,12 +1571,21 @@ function PuckUI:CreateWindow(settings)
 
         local current = mousePosition(input)
         local delta = current - dragStart
-        mover.Position = UDim2.new(
-            startPosition.X.Scale,
-            startPosition.X.Offset + delta.X,
-            startPosition.Y.Scale,
-            startPosition.Y.Offset + delta.Y
+        local wantedX = startPosition.X + delta.X
+        local wantedY = startPosition.Y + delta.Y
+
+        -- Edge-lock the candidate position BEFORE moving the WindowMover. This is
+        -- the same no-snap principle used by robust draggable UIs: the cursor can
+        -- keep moving, but the window simply stops when its rendered edge reaches
+        -- the screen boundary. Nothing is corrected on mouse release.
+        local boundsMode = window.Minimized and "Current" or "Expanded"
+        local x, y = window:_ClampMoverXY(
+            wantedX,
+            wantedY,
+            DRAG_EDGE_MARGIN,
+            boundsMode
         )
+        mover.Position = UDim2.fromOffset(x, y)
     end
 
     dragHandle.InputBegan:Connect(function(input)
@@ -1573,7 +1596,16 @@ function PuckUI:CreateWindow(settings)
             dragging = true
             window.UserPositioned = true
             dragStart = mousePosition(input)
-            startPosition = mover.Position
+
+            -- Freeze the mover's current rendered screen position as a plain
+            -- Vector2. The mover is intentionally unscaled, so mouse delta and
+            -- mover delta remain in the exact same pixel coordinate space.
+            local viewport = getViewportSize()
+            local pos = mover.Position
+            startPosition = Vector2.new(
+                viewport.X * pos.X.Scale + pos.X.Offset,
+                viewport.Y * pos.Y.Scale + pos.Y.Offset
+            )
             activeTouch = input.UserInputType == Enum.UserInputType.Touch and input or nil
 
             input.Changed:Connect(function()
