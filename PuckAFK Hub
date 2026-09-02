@@ -6,8 +6,9 @@
       Chicken Farm           : 137233438285284
       SevenM Hood            : 131558436575033
       +1 Speed Monkey Escape : 114697347887839
-      The Lost Front         : 102871156420149
       +1 Power Per Click     : 74889851913797
+      Dig & Clean             : 83038462357724
+      Magic Loot             : 133188236593503
       Sniper Arena universe  : GameId 9534705677 (all current/future subplaces)
       Murder Mystery 2       : 142823291
       Build a Gun Army        : 134162299584012
@@ -173,6 +174,11 @@ local UNIVERSE_ROUTES = {
 }
 
 local ROUTES = {
+    [83038462357724] = {
+        name = "Dig & Clean",
+        source = "github.com/PuckAFK/Dig-Clean-",
+        url = "https://raw.githubusercontent.com/PuckAFK/Dig-Clean-/main/Dig%20%26%20Clean.lua",
+    },
     [134162299584012] = {
         name = "Build a Gun Army",
         source = "puckafk.site/scripts/build-a-gun-army/autofarm.lua",
@@ -187,6 +193,11 @@ local ROUTES = {
         name = "+1 Power Per Click",
         source = "github.com/PuckAFK/-1-Power-Per-Click",
         url = "https://raw.githubusercontent.com/PuckAFK/-1-Power-Per-Click/main/%2B1%20Power%20Per%20Click.lua",
+    },
+    [133188236593503] = {
+        name = "Magic Loot",
+        source = "github.com/PuckAFK/Magic-Loot",
+        url = "https://raw.githubusercontent.com/PuckAFK/Magic-Loot/main/Magic%20Loot.lua",
     },
     [128481067661991] = {
         name = "Get Rich ASAP",
@@ -207,11 +218,6 @@ local ROUTES = {
         name = "+1 Speed Monkey Escape",
         source = "github.com/PuckAFK/1-Speed-Monkey-Escape",
         url = "https://raw.githubusercontent.com/PuckAFK/1-Speed-Monkey-Escape/main/1%20Speed%20Monkey%20Escape.lua",
-    },
-    [102871156420149] = {
-        name = "The Lost Front",
-        source = "github.com/PuckAFK/The-Lost-Front",
-        url = "https://raw.githubusercontent.com/PuckAFK/The-Lost-Front/main/The%20Lost%20Front.lua",
     },
     [122446657157717] = SNIPER_ARENA_ROUTE,
     [119259569670784] = SNIPER_ARENA_ROUTE,
@@ -1083,15 +1089,16 @@ local function chooseRouteManually(placeId)
     })
 
     local manualRoutes = {
+        ROUTES[83038462357724],
         ROUTES[134162299584012],
         ROUTES[142823291],
         SNIPER_ARENA_ROUTE,
         ROUTES[74889851913797],
+        ROUTES[133188236593503],
         ROUTES[128481067661991],
         ROUTES[137233438285284],
         ROUTES[131558436575033],
         ROUTES[114697347887839],
-        ROUTES[102871156420149],
     }
 
     local selectedRoute = nil
