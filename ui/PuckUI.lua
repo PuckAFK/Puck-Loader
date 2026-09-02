@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.6.1 - No-Snap Release Drag Fix
+    PuckUI v3.7.0 - WindowMover Drag Overhaul
     Shared PuckAFK game-script UI.
 
     Combined from both supplied PuckUI variants:
@@ -20,7 +20,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.6.1",
+    Version = "3.7.0",
     Flags = {},
     Window = nil,
 }
@@ -482,29 +482,45 @@ function PuckUI:CreateWindow(settings)
     })
     getGuiParent(screen)
 
+    -- Dedicated unscaled mover. Dragging changes ONLY this object's Position.
+    -- The visible UI, UIScale, responsive sizing and shadow all live underneath
+    -- it, so none of those systems can interfere with pointer coordinates.
+    local mover = create("Frame", {
+        Name = "WindowMover",
+        AnchorPoint = Vector2.new(0, 0),
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.fromOffset(0, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Active = false,
+        ClipsDescendants = false,
+        ZIndex = 1,
+        Parent = screen,
+    })
+
     local shadow = create("Frame", {
         Name = "Shadow",
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 4, 0.5, 4),
+        AnchorPoint = Vector2.new(0, 0),
+        Position = UDim2.fromOffset(4, 4),
         Size = UDim2.fromOffset(width, height),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
         BackgroundTransparency = 0.5,
         BorderSizePixel = 0,
         ZIndex = 1,
-        Parent = screen,
+        Parent = mover,
     })
 
     local main = create("Frame", {
         Name = "Main",
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
+        AnchorPoint = Vector2.new(0, 0),
+        Position = UDim2.fromOffset(0, 0),
         Size = UDim2.fromOffset(width, height),
         BackgroundColor3 = Theme.Main,
         BorderColor3 = Theme.BorderDark,
         BorderSizePixel = 1,
         Active = true,
         ZIndex = 2,
-        Parent = screen,
+        Parent = mover,
     })
 
     local mainScale = create("UIScale", {Scale = 1, Parent = main})
@@ -858,6 +874,7 @@ function PuckUI:CreateWindow(settings)
 
     local window = {
         ScreenGui = screen,
+        Mover = mover,
         Main = main,
         TitleBar = titleBar,
         TitleLabel = titleLabel,
@@ -913,21 +930,39 @@ function PuckUI:CreateWindow(settings)
         end
     end
 
+    function window:_RenderedWindowSize(boundsMode)
+        local scale = 1
+        if self.MainScale then
+            scale = math.max(0.01, tonumber(self.MainScale.Scale) or 1)
+        end
+
+        local baseWidth = math.max(1, tonumber(self.Main.Size.X.Offset) or self.BaseWidth or 1)
+        local baseHeight = math.max(1, tonumber(self.Main.Size.Y.Offset) or self.BaseHeight or 1)
+        if boundsMode == "Expanded" then
+            baseWidth = math.max(1, tonumber(self.FullSize.X.Offset) or baseWidth)
+            baseHeight = math.max(1, tonumber(self.FullSize.Y.Offset) or baseHeight)
+        end
+
+        return Vector2.new(baseWidth * scale, baseHeight * scale)
+    end
+
     function window:Center()
-        if not self.Main or not self.Main.Parent then
+        if not self.Mover or not self.Mover.Parent then
             return
         end
+
         self.UserPositioned = false
-        self.Main.AnchorPoint = Vector2.new(0.5, 0.5)
-        self.Main.Position = UDim2.fromScale(0.5, 0.5)
-        if shadow and shadow.Parent then
-            shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-            shadow.Position = UDim2.new(0.5, 4, 0.5, 4)
-        end
+        local viewport = getViewportSize()
+        local size = self:_RenderedWindowSize(self.Minimized and "Current" or "Expanded")
+        self.Mover.AnchorPoint = Vector2.new(0, 0)
+        self.Mover.Position = UDim2.fromOffset(
+            math.floor((viewport.X - size.X) * 0.5 + 0.5),
+            math.floor((viewport.Y - size.Y) * 0.5 + 0.5)
+        )
     end
 
     function window:ClampToViewport(padding, boundsMode)
-        if not self.Main or not self.Main.Parent then
+        if not self.Mover or not self.Mover.Parent then
             return
         end
         if not self.UserPositioned then
@@ -935,91 +970,28 @@ function PuckUI:CreateWindow(settings)
             return
         end
 
+        -- Clamp the unscaled mover only. Main/Shadow positions never change.
         local viewport = getViewportSize()
         local margin = math.max(4, tonumber(padding) or 6)
-        local size = self.Main.AbsoluteSize
-
-        -- Restoring from minimized state must clamp against the full rendered
-        -- window footprint, not just the small collapsed title bar.
-        if boundsMode == "Expanded" then
-            local uiScale = 1
-            if self.MainScale then
-                uiScale = math.max(0.01, tonumber(self.MainScale.Scale) or 1)
-            end
-
-            size = Vector2.new(
-                math.max(1, self.FullSize.X.Offset * uiScale),
-                math.max(1, self.FullSize.Y.Offset * uiScale)
-            )
-        end
-
-        -- Preserve the exact AnchorPoint and UDim scale components. The old
-        -- clamp converted the window to AnchorPoint (0,0) after a drag, which
-        -- caused the visible snap on mouse release. Compute the rendered
-        -- top-left from the current anchor position instead, then only adjust
-        -- the Position offsets if the window is actually outside the viewport.
-        local current = self.Main.Position
-        local anchor = self.Main.AnchorPoint
-        local anchorPixel = Vector2.new(
-            viewport.X * current.X.Scale + current.X.Offset,
-            viewport.Y * current.Y.Scale + current.Y.Offset
-        )
-        local topLeft = Vector2.new(
-            anchorPixel.X - size.X * anchor.X,
-            anchorPixel.Y - size.Y * anchor.Y
-        )
-
+        local size = self:_RenderedWindowSize(boundsMode)
+        local pos = self.Mover.Position
+        local x = viewport.X * pos.X.Scale + pos.X.Offset
+        local y = viewport.Y * pos.Y.Scale + pos.Y.Offset
         local maxX = math.max(margin, viewport.X - size.X - margin)
         local maxY = math.max(margin, viewport.Y - size.Y - margin)
-        local clampedX = math.clamp(topLeft.X, margin, maxX)
-        local clampedY = math.clamp(topLeft.Y, margin, maxY)
+        local nx = math.clamp(x, margin, maxX)
+        local ny = math.clamp(y, margin, maxY)
 
-        -- If already inside the viewport, leave Position completely untouched.
-        -- This is important because even an equivalent representation can make
-        -- a scaled GUI appear to jump in some Roblox/executor environments.
-        if math.abs(clampedX - topLeft.X) < 0.01
-            and math.abs(clampedY - topLeft.Y) < 0.01 then
+        if math.abs(nx - x) < 0.01 and math.abs(ny - y) < 0.01 then
             return
         end
 
-        local newAnchorPixel = Vector2.new(
-            clampedX + size.X * anchor.X,
-            clampedY + size.Y * anchor.Y
-        )
-        local newPos = UDim2.new(
-            current.X.Scale,
-            newAnchorPixel.X - viewport.X * current.X.Scale,
-            current.Y.Scale,
-            newAnchorPixel.Y - viewport.Y * current.Y.Scale
-        )
-
-        self.Main.Position = newPos
-        if shadow and shadow.Parent then
-            shadow.AnchorPoint = anchor
-            shadow.Position = UDim2.new(
-                newPos.X.Scale,
-                newPos.X.Offset + 4,
-                newPos.Y.Scale,
-                newPos.Y.Offset + 4
-            )
-        end
+        self.Mover.Position = UDim2.fromOffset(nx, ny)
     end
 
     function window:ApplyResponsiveLayout()
         if not self.ScreenGui or not self.ScreenGui.Parent then
             return
-        end
-
-        -- Until the user intentionally drags the window, responsive reflows
-        -- always keep it centered. This also repairs old scripts that try to
-        -- apply legacy half-width/half-height offsets to an anchored window.
-        if not self.UserPositioned then
-            self.Main.AnchorPoint = Vector2.new(0.5, 0.5)
-            self.Main.Position = UDim2.fromScale(0.5, 0.5)
-            if shadow and shadow.Parent then
-                shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-                shadow.Position = UDim2.new(0.5, 4, 0.5, 4)
-            end
         end
 
         local viewport = getViewportSize()
@@ -1121,11 +1093,10 @@ function PuckUI:CreateWindow(settings)
             ))
         end
 
-        if self.UserPositioned then
-            self:ClampToViewport(
-                phoneLayout and 6 or 8,
-                self.Minimized and "Current" or "Expanded"
-            )
+        -- Responsive reflow may resize the contents, but it never moves a window
+        -- the user has dragged. Only untouched windows are re-centered.
+        if not self.UserPositioned then
+            self:Center()
         end
     end
 
@@ -1558,22 +1529,25 @@ function PuckUI:CreateWindow(settings)
     end))
 
     ------------------------------------------------------------------------
-    -- Stable delta dragging
+    -- WindowMover dragging
     --
-    -- Use only pointer delta + the window's existing Position. This keeps all
-    -- math in one coordinate space and works correctly with centered anchors,
-    -- UIScale, IgnoreGuiInset, responsive layouts, and executor mouse input.
-    -- Do not normalize AnchorPoint or read AbsolutePosition during the drag.
+    -- This intentionally mirrors the simple, proven dragStart/startPos/delta
+    -- pattern used by established Roblox UI libraries, but applies it to an
+    -- unscaled outer mover instead of the visible/scaled Main frame.
     ------------------------------------------------------------------------
     local dragging = false
-    local activeTouch = nil
-    local closeOpenPopup = function() end
+    local dragInput = nil
     local dragStart = nil
     local startPosition = nil
+    local activeTouch = nil
+    local closeOpenPopup = function() end
 
-    local function pointerPosition(input)
-        if not input then return nil end
-        return Vector2.new(input.Position.X, input.Position.Y)
+    local function mousePosition(input)
+        if input and input.UserInputType == Enum.UserInputType.Touch then
+            return Vector2.new(input.Position.X, input.Position.Y)
+        end
+        local p = UserInputService:GetMouseLocation()
+        return Vector2.new(p.X, p.Y)
     end
 
     local function updateDrag(input)
@@ -1581,44 +1555,14 @@ function PuckUI:CreateWindow(settings)
             return
         end
 
-        local current = pointerPosition(input)
-        if not current then return end
+        local current = mousePosition(input)
         local delta = current - dragStart
-
-        -- Preserve the original Scale components and only add the raw pointer
-        -- delta to Offset. Because both dragStart/current come from the same
-        -- InputObject coordinate system, GUI inset differences cancel out.
-        local newPos = UDim2.new(
+        mover.Position = UDim2.new(
             startPosition.X.Scale,
             startPosition.X.Offset + delta.X,
             startPosition.Y.Scale,
             startPosition.Y.Offset + delta.Y
         )
-
-        main.Position = newPos
-        if shadow and shadow.Parent then
-            shadow.AnchorPoint = main.AnchorPoint
-            shadow.Position = UDim2.new(
-                newPos.X.Scale,
-                newPos.X.Offset + 4,
-                newPos.Y.Scale,
-                newPos.Y.Offset + 4
-            )
-        end
-    end
-
-    local function finishDrag()
-        if not dragging then return end
-        dragging = false
-        activeTouch = nil
-        dragStart = nil
-        startPosition = nil
-
-        -- IMPORTANT: do not touch Main.Position when the pointer is released.
-        -- Common Roblox draggable implementations simply end the drag here.
-        -- Any post-release clamp/re-anchor causes the exact snap/jump that was
-        -- still visible in v3.6.0. Viewport clamping is reserved for explicit
-        -- layout changes such as minimize/restore or viewport resize.
     end
 
     dragHandle.InputBegan:Connect(function(input)
@@ -1628,20 +1572,29 @@ function PuckUI:CreateWindow(settings)
             closeOpenPopup()
             dragging = true
             window.UserPositioned = true
-            dragStart = pointerPosition(input)
-            startPosition = main.Position
+            dragStart = mousePosition(input)
+            startPosition = mover.Position
             activeTouch = input.UserInputType == Enum.UserInputType.Touch and input or nil
 
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
-                    finishDrag()
+                    dragging = false
+                    dragInput = nil
+                    dragStart = nil
+                    startPosition = nil
+                    activeTouch = nil
                 end
             end)
         end
     end)
 
-    -- Continue tracking mouse movement even after the pointer leaves the title
-    -- bar. Touch follows only the finger that started the drag.
+    dragHandle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
     UserInputService.InputChanged:Connect(function(input)
         if not dragging then return end
 
@@ -1650,15 +1603,22 @@ function PuckUI:CreateWindow(settings)
                 updateDrag(input)
             end
         elseif input.UserInputType == Enum.UserInputType.MouseMovement then
+            -- Use the global mouse location so dragging remains smooth even when
+            -- the cursor leaves the narrow title-bar hitbox.
             updateDrag(input)
         end
     end)
 
     UserInputService.InputEnded:Connect(function(input)
-        local mouseEnded = input.UserInputType == Enum.UserInputType.MouseButton1
-        local touchEnded = activeTouch ~= nil and input == activeTouch
-        if mouseEnded or touchEnded then
-            finishDrag()
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or (activeTouch ~= nil and input == activeTouch) then
+            dragging = false
+            dragInput = nil
+            dragStart = nil
+            startPosition = nil
+            activeTouch = nil
+            -- Deliberately no clamp, re-center, tween, anchor change or Position
+            -- write here. Drop means exactly drop.
         end
     end)
 
