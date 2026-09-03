@@ -10,6 +10,7 @@
       Dig & Clean             : 83038462357724
       Magic Loot             : 133188236593503
       Sniper Arena universe  : GameId 9534705677 (all current/future subplaces)
+      One Tap universe       : GameId 9294074907 (root PlaceId 90568084448279)
       Murder Mystery 2       : 142823291
       Build a Gun Army        : 134162299584012
 
@@ -168,12 +169,21 @@ local SNIPER_ARENA_ROUTE = {
     url = "https://raw.githubusercontent.com/PuckAFK/Sniper-Arena/main/Sniper%20Arena.lua",
 }
 
+
+local ONE_TAP_ROUTE = {
+    name = "One Tap",
+    source = "github.com/PuckAFK/One-Tap",
+    url = "https://raw.githubusercontent.com/PuckAFK/One-Tap/main/onetap.lua",
+}
+
 local UNIVERSE_ROUTES = {
-    -- Every place/subplace in the Sniper Arena universe, including future ones.
+    -- Universe routing keeps supported subplaces working without hardcoding each PlaceId.
     [9534705677] = SNIPER_ARENA_ROUTE,
+    [9294074907] = ONE_TAP_ROUTE,
 }
 
 local ROUTES = {
+    [90568084448279] = ONE_TAP_ROUTE,
     [83038462357724] = {
         name = "Dig & Clean",
         source = "github.com/PuckAFK/Dig-Clean-",
@@ -1093,6 +1103,7 @@ local function chooseRouteManually(placeId)
         ROUTES[134162299584012],
         ROUTES[142823291],
         SNIPER_ARENA_ROUTE,
+        ONE_TAP_ROUTE,
         ROUTES[74889851913797],
         ROUTES[133188236593503],
         ROUTES[128481067661991],
@@ -1359,8 +1370,8 @@ task.spawn(function()
     local placeId = game.PlaceId
     local universeId = game.GameId
 
-    -- Universe routing is checked first. This is what lets Sniper Arena keep
-    -- working in every current/future subplace without adding every PlaceId.
+    -- Universe routing is checked first so supported games keep working in
+    -- current/future subplaces without adding every PlaceId.
     local route = UNIVERSE_ROUTES[universeId] or ROUTES[placeId]
 
     setStatus(
@@ -1404,7 +1415,7 @@ task.spawn(function()
     task.wait(0.20)
 
     if #source < 20 then
-        fail("Invalid Script", "GitHub returned an unexpectedly small file")
+        fail("Invalid Script", "Script source returned an unexpectedly small file")
         return
     end
 
