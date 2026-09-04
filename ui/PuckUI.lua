@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.7.3 - Settled Viewport Resize Clamp
+    PuckUI v3.8.0 - Motion & Transition Polish
     Shared PuckAFK game-script UI.
 
     v3.7.1 change: dragging via the title bar now clamps live to the
@@ -13,6 +13,11 @@
     frames and clamps from Main.AbsolutePosition / Main.AbsoluteSize after the
     responsive layout has actually settled. This fixes fullscreen -> small
     window resizing where Roblox reports intermediate/stale dimensions.
+
+    v3.8.0 change: adds a lightweight motion system for minimize/restore,
+    tab switching, UI visibility, toggles, dropdowns, and interaction feedback.
+    Motion stays intentionally fast so the interface feels responsive rather
+    than decorative or sluggish.
 
     Combined from both supplied PuckUI variants:
       - Uses the fuller v2.2 control/API implementation as the functional base
@@ -33,7 +38,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.7.3",
+    Version = "3.8.0",
     Flags = {},
     Window = nil,
 }
@@ -271,6 +276,36 @@ local function tween(object, duration, properties)
     return animation
 end
 
+-- Shared motion timings. These are deliberately short: enough to communicate
+-- state changes without making frequent UI actions feel delayed.
+local Motion = {
+    Hover = 0.08,
+    Press = 0.07,
+    Toggle = 0.11,
+    Popup = 0.12,
+    Tab = 0.16,
+    Window = 0.19,
+    Visibility = 0.14,
+}
+
+local function motionTween(object, duration, style, direction, properties)
+    if not object or not object.Parent then
+        return nil
+    end
+
+    local animation = TweenService:Create(
+        object,
+        TweenInfo.new(
+            duration or Motion.Tab,
+            style or Enum.EasingStyle.Quart,
+            direction or Enum.EasingDirection.Out
+        ),
+        properties
+    )
+    animation:Play()
+    return animation
+end
+
 local function codeLabel(parent, text, size, color, zIndex)
     return create("TextLabel", {
         BackgroundTransparency = 1,
@@ -349,14 +384,44 @@ local function safeSet(instance, property, value)
 end
 
 local function setHover(button, normal, hover)
+    local hovering = false
+
     button.MouseEnter:Connect(function()
+        hovering = true
         if button.Parent then
-            tween(button, 0.08, {BackgroundColor3 = hover})
+            tween(button, Motion.Hover, {BackgroundColor3 = hover})
         end
     end)
+
     button.MouseLeave:Connect(function()
+        hovering = false
         if button.Parent then
-            tween(button, 0.08, {BackgroundColor3 = normal})
+            tween(button, Motion.Hover, {BackgroundColor3 = normal})
+        end
+    end)
+
+    button.MouseButton1Down:Connect(function()
+        if button.Parent then
+            motionTween(
+                button,
+                Motion.Press,
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.Out,
+                {BackgroundTransparency = math.min(0.12, button.BackgroundTransparency + 0.08)}
+            )
+        end
+    end)
+
+    button.MouseButton1Up:Connect(function()
+        if button.Parent then
+            motionTween(
+                button,
+                Motion.Press,
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.Out,
+                {BackgroundTransparency = 0}
+            )
+            tween(button, Motion.Hover, {BackgroundColor3 = hovering and hover or normal})
         end
     end)
 end
@@ -523,7 +588,7 @@ function PuckUI:CreateWindow(settings)
         Parent = mover,
     })
 
-    local main = create("Frame", {
+    local main = create("CanvasGroup", {
         Name = "Main",
         AnchorPoint = Vector2.new(0, 0),
         Position = UDim2.fromOffset(0, 0),
@@ -531,7 +596,9 @@ function PuckUI:CreateWindow(settings)
         BackgroundColor3 = Theme.Main,
         BorderColor3 = Theme.BorderDark,
         BorderSizePixel = 1,
+        GroupTransparency = 0,
         Active = true,
+        ClipsDescendants = true,
         ZIndex = 2,
         Parent = mover,
     })
@@ -915,6 +982,10 @@ function PuckUI:CreateWindow(settings)
         ToggleKeyCode = Enum.KeyCode.K,
         KeybindDisplays = {},
         ResponsiveConnections = {},
+        TabAnimationGeneration = 0,
+        WindowAnimationGeneration = 0,
+        VisibilityAnimationGeneration = 0,
+        WindowAnimating = false,
     }
 
     local function updateResponsiveTextSizes(phoneLayout)
@@ -1768,13 +1839,67 @@ function PuckUI:CreateWindow(settings)
 
     function window:SetVisible(state)
         local visible = state == true
-        self.Visible = visible
-        safeSet(self.Main, "Visible", visible)
-        if shadow then
-            safeSet(shadow, "Visible", visible)
+        if self.Visible == visible and self.Main and self.Main.Visible == visible then
+            return
         end
-        if not visible then
+
+        self.VisibilityAnimationGeneration += 1
+        local generation = self.VisibilityAnimationGeneration
+        self.Visible = visible
+
+        if visible then
+            safeSet(self.Main, "Visible", true)
+            safeSet(self.Main, "GroupTransparency", 1)
+
+            if shadow and not self.Minimized then
+                safeSet(shadow, "Visible", true)
+                safeSet(shadow, "BackgroundTransparency", 1)
+                motionTween(
+                    shadow,
+                    Motion.Visibility,
+                    Enum.EasingStyle.Quad,
+                    Enum.EasingDirection.Out,
+                    {BackgroundTransparency = 0.5}
+                )
+            end
+
+            motionTween(
+                self.Main,
+                Motion.Visibility,
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.Out,
+                {GroupTransparency = 0}
+            )
+        else
             self:ClosePopup()
+
+            motionTween(
+                self.Main,
+                Motion.Visibility,
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.In,
+                {GroupTransparency = 1}
+            )
+
+            if shadow and shadow.Visible then
+                motionTween(
+                    shadow,
+                    Motion.Visibility,
+                    Enum.EasingStyle.Quad,
+                    Enum.EasingDirection.In,
+                    {BackgroundTransparency = 1}
+                )
+            end
+
+            task.delay(Motion.Visibility + 0.02, function()
+                if generation ~= self.VisibilityAnimationGeneration or self.Visible then
+                    return
+                end
+                safeSet(self.Main, "Visible", false)
+                if shadow then
+                    safeSet(shadow, "Visible", false)
+                end
+            end)
         end
     end
 
@@ -1856,23 +1981,115 @@ function PuckUI:CreateWindow(settings)
     end
 
     function window:SelectTab(tab)
-        if self.CurrentTab == tab then
+        if not tab or self.CurrentTab == tab then
             return
         end
 
         self:ClosePopup()
+        self.TabAnimationGeneration += 1
+        local generation = self.TabAnimationGeneration
+        local previous = self.CurrentTab
+        local previousIndex = previous and tonumber(previous.Index) or tonumber(tab.Index) or 1
+        local nextIndex = tonumber(tab.Index) or previousIndex
+        local direction = nextIndex >= previousIndex and 1 or -1
+        local travel = window.ResolvedLayout == "Phone" and 10 or 14
 
-        if self.CurrentTab then
-            self.CurrentTab.Container.Visible = false
-            self.CurrentTab.Button.TextColor3 = Theme.Text
-            self.CurrentTab.Highlight.Visible = false
+        -- Clean up any stale outgoing tab from a very rapid sequence of clicks.
+        -- Only the immediately previous and incoming tabs participate in the
+        -- transition; everything else must be non-interactive and hidden.
+        for _, otherTab in ipairs(self.Tabs or {}) do
+            if otherTab ~= previous and otherTab ~= tab and otherTab.Container then
+                otherTab.Container.Visible = false
+                otherTab.Container.GroupTransparency = 0
+                otherTab.Container.Position = UDim2.fromOffset(0, 0)
+                if otherTab.Highlight then
+                    otherTab.Highlight.Visible = false
+                    otherTab.Highlight.BackgroundTransparency = 0
+                    otherTab.Highlight.Size = UDim2.new(1, 0, 0, 1)
+                end
+            end
         end
 
         self.CurrentTab = tab
+
+        if previous then
+            motionTween(
+                previous.Button,
+                Motion.Tab,
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.Out,
+                {TextColor3 = Theme.Text}
+            )
+            motionTween(
+                previous.Highlight,
+                Motion.Tab * 0.75,
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.In,
+                {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(0.18, 0, 0, 1),
+                }
+            )
+            motionTween(
+                previous.Container,
+                Motion.Tab,
+                Enum.EasingStyle.Quart,
+                Enum.EasingDirection.Out,
+                {
+                    GroupTransparency = 1,
+                    Position = UDim2.fromOffset(-direction * travel, 0),
+                }
+            )
+        end
+
         tab.Container.Visible = true
-        tab.Button.TextColor3 = Theme.Accent
+        tab.Container.GroupTransparency = 1
+        tab.Container.Position = UDim2.fromOffset(direction * travel, 0)
         tab.Highlight.BackgroundColor3 = Theme.Accent
+        tab.Highlight.BackgroundTransparency = 1
+        tab.Highlight.Size = UDim2.new(0.18, 0, 0, 1)
         tab.Highlight.Visible = true
+
+        motionTween(
+            tab.Button,
+            Motion.Tab,
+            Enum.EasingStyle.Quad,
+            Enum.EasingDirection.Out,
+            {TextColor3 = Theme.Accent}
+        )
+        motionTween(
+            tab.Highlight,
+            Motion.Tab,
+            Enum.EasingStyle.Quart,
+            Enum.EasingDirection.Out,
+            {
+                BackgroundTransparency = 0,
+                Size = UDim2.new(1, 0, 0, 1),
+            }
+        )
+        motionTween(
+            tab.Container,
+            Motion.Tab,
+            Enum.EasingStyle.Quart,
+            Enum.EasingDirection.Out,
+            {
+                GroupTransparency = 0,
+                Position = UDim2.fromOffset(0, 0),
+            }
+        )
+
+        if previous then
+            task.delay(Motion.Tab + 0.025, function()
+                if previous ~= self.CurrentTab and previous.Container and previous.Container.Parent then
+                    previous.Container.Visible = false
+                    previous.Container.GroupTransparency = 0
+                    previous.Container.Position = UDim2.fromOffset(0, 0)
+                    previous.Highlight.Visible = false
+                    previous.Highlight.BackgroundTransparency = 0
+                    previous.Highlight.Size = UDim2.new(1, 0, 0, 1)
+                end
+            end)
+        end
 
         task.defer(function()
             if not tab.Button.Parent then return end
@@ -1880,14 +2097,29 @@ function PuckUI:CreateWindow(settings)
             local buttonRight = buttonLeft + tab.Button.AbsoluteSize.X
             local visibleLeft = tabBar.CanvasPosition.X
             local visibleRight = visibleLeft + tabBar.AbsoluteSize.X
+            local targetX = nil
 
             if buttonLeft < visibleLeft then
-                tabBar.CanvasPosition = Vector2.new(math.max(0, buttonLeft - 4), 0)
+                targetX = math.max(0, buttonLeft - 4)
             elseif buttonRight > visibleRight then
-                tabBar.CanvasPosition = Vector2.new(
-                    math.max(0, buttonRight - tabBar.AbsoluteSize.X + 4),
-                    0
-                )
+                targetX = math.max(0, buttonRight - tabBar.AbsoluteSize.X + 4)
+            end
+
+            if targetX then
+                -- CanvasPosition is not tweenable reliably in every executor, so
+                -- step it over a few rendered frames instead of snapping.
+                local startX = tabBar.CanvasPosition.X
+                local started = os.clock()
+                local duration = Motion.Tab
+                while tabBar.Parent and os.clock() - started < duration do
+                    local alpha = math.clamp((os.clock() - started) / duration, 0, 1)
+                    local eased = 1 - ((1 - alpha) ^ 3)
+                    tabBar.CanvasPosition = Vector2.new(startX + (targetX - startX) * eased, 0)
+                    RunService.RenderStepped:Wait()
+                end
+                if tabBar.Parent then
+                    tabBar.CanvasPosition = Vector2.new(targetX, 0)
+                end
             end
         end)
     end
@@ -1907,6 +2139,7 @@ function PuckUI:CreateWindow(settings)
             Sections = {},
             _nextColumn = 1,
             _currentSection = nil,
+            Index = #self.Tabs + 1,
         }
 
         local textSize = TextService:GetTextSize(tab.Name, 13, Enum.Font.Code, Vector2.new(1000, 18))
@@ -1936,7 +2169,8 @@ function PuckUI:CreateWindow(settings)
 
         -- Aztup top/bottom highlight for active tab
         local highlight = create("Frame", {
-            Position = UDim2.new(0, 0, 1, -1),
+            AnchorPoint = Vector2.new(0.5, 0),
+            Position = UDim2.new(0.5, 0, 1, -1),
             Size = UDim2.new(1, 0, 0, 1),
             BackgroundColor3 = Theme.Accent,
             BorderSizePixel = 0,
@@ -1946,12 +2180,13 @@ function PuckUI:CreateWindow(settings)
         })
         table.insert(window.AccentObjects, highlight)
 
-        local container = create("Frame", {
+        local container = create("CanvasGroup", {
             Name = "Content_" .. tab.Name,
             Size = UDim2.fromScale(1, 1),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             ClipsDescendants = false,
+            GroupTransparency = 0,
             Visible = false,
             ZIndex = 4,
             Parent = columnsHost,
@@ -2361,11 +2596,13 @@ function PuckUI:CreateWindow(settings)
             create("UIStroke", { Color = Theme.Border, Thickness = 1, Parent = box })
 
             local fill = create("Frame", {
-                Position = UDim2.fromOffset(2, 2),
-                Size = UDim2.new(1, -4, 1, -4),
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.fromScale(0.5, 0.5),
+                Size = state and UDim2.new(1, -4, 1, -4) or UDim2.fromOffset(0, 0),
                 BackgroundColor3 = Theme.Accent,
+                BackgroundTransparency = state and 0 or 1,
                 BorderSizePixel = 0,
-                Visible = state,
+                Visible = true,
                 ZIndex = 9,
                 Parent = box,
             })
@@ -2377,11 +2614,39 @@ function PuckUI:CreateWindow(settings)
             label.TextTruncate = Enum.TextTruncate.AtEnd
 
             local object = {}
+            local toggleGeneration = 0
 
             local function apply(value, invokeCallback)
                 state = value == true
-                fill.Visible = state
-                label.TextColor3 = state and Theme.BrightText or Theme.DimText
+                toggleGeneration += 1
+                local generation = toggleGeneration
+
+                motionTween(
+                    fill,
+                    Motion.Toggle,
+                    Enum.EasingStyle.Back,
+                    Enum.EasingDirection.Out,
+                    {
+                        Size = state and UDim2.new(1, -4, 1, -4) or UDim2.fromOffset(0, 0),
+                        BackgroundTransparency = state and 0 or 1,
+                    }
+                )
+                motionTween(
+                    label,
+                    Motion.Toggle,
+                    Enum.EasingStyle.Quad,
+                    Enum.EasingDirection.Out,
+                    {TextColor3 = state and Theme.BrightText or Theme.DimText}
+                )
+
+                if not state then
+                    task.delay(Motion.Toggle + 0.02, function()
+                        if generation == toggleGeneration and not state and fill.Parent then
+                            fill.Size = UDim2.fromOffset(0, 0)
+                            fill.BackgroundTransparency = 1
+                        end
+                    end)
+                end
 
                 if flag then
                     PuckUI.Flags[flag] = state
@@ -2456,6 +2721,10 @@ function PuckUI:CreateWindow(settings)
             local flag = data.Flag
             local popup = nil
             local blocker = nil
+            local popupGeneration = 0
+            local popupOpensUpward = false
+            local popupTargetPosition = nil
+            local popupTargetHeight = 0
 
             local function apply(value, invokeCallback)
                 if value == nil then
@@ -2475,15 +2744,51 @@ function PuckUI:CreateWindow(settings)
             end
 
             local function closePopup()
-                if popup then
-                    popup:Destroy()
-                    popup = nil
-                end
+                popupGeneration += 1
+                local generation = popupGeneration
+                local oldPopup = popup
+                popup = nil
+
                 if blocker then
                     blocker:Destroy()
                     blocker = nil
                 end
-                arrow.Text = "v"
+
+                motionTween(
+                    arrow,
+                    Motion.Popup,
+                    Enum.EasingStyle.Quad,
+                    Enum.EasingDirection.Out,
+                    {Rotation = 0, TextColor3 = Theme.DimText}
+                )
+
+                if oldPopup and oldPopup.Parent then
+                    local targetPosition = oldPopup.Position
+                    if popupOpensUpward then
+                        targetPosition = UDim2.fromOffset(
+                            oldPopup.Position.X.Offset,
+                            oldPopup.Position.Y.Offset + oldPopup.AbsoluteSize.Y
+                        )
+                    end
+
+                    motionTween(
+                        oldPopup,
+                        Motion.Popup,
+                        Enum.EasingStyle.Quad,
+                        Enum.EasingDirection.In,
+                        {
+                            Size = UDim2.fromOffset(oldPopup.Size.X.Offset, 1),
+                            Position = targetPosition,
+                            BackgroundTransparency = 1,
+                        }
+                    )
+
+                    task.delay(Motion.Popup + 0.02, function()
+                        if oldPopup and oldPopup.Parent then
+                            oldPopup:Destroy()
+                        end
+                    end)
+                end
 
                 if window.OpenPopup == object then
                     window.OpenPopup = nil
@@ -2510,10 +2815,15 @@ function PuckUI:CreateWindow(settings)
 
                 local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
                 local menuY = selectorPosition.Y + selectorSize.Y + 1
+                popupOpensUpward = false
 
                 if menuY + menuHeight > viewport.Y - 6 then
                     menuY = selectorPosition.Y - menuHeight - 1
+                    popupOpensUpward = true
                 end
+
+                popupTargetPosition = UDim2.fromOffset(selectorPosition.X, menuY)
+                popupTargetHeight = menuHeight
 
                 blocker = create("TextButton", {
                     Size = UDim2.fromScale(1, 1),
@@ -2527,10 +2837,14 @@ function PuckUI:CreateWindow(settings)
 
                 blocker.MouseButton1Click:Connect(closePopup)
 
+                local popupWidth = math.max(80, selectorSize.X)
+                local startY = popupOpensUpward and (menuY + menuHeight) or menuY
+
                 popup = create("ScrollingFrame", {
-                    Position = UDim2.fromOffset(selectorPosition.X, menuY),
-                    Size = UDim2.fromOffset(math.max(80, selectorSize.X), menuHeight),
+                    Position = UDim2.fromOffset(selectorPosition.X, startY),
+                    Size = UDim2.fromOffset(popupWidth, 1),
                     BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+                    BackgroundTransparency = 1,
                     BorderColor3 = Theme.Border,
                     BorderSizePixel = 1,
                     CanvasSize = UDim2.new(),
@@ -2578,7 +2892,28 @@ function PuckUI:CreateWindow(settings)
                     end)
                 end
 
-                arrow.Text = "^"
+                popupGeneration += 1
+                local generation = popupGeneration
+
+                motionTween(
+                    popup,
+                    Motion.Popup,
+                    Enum.EasingStyle.Quart,
+                    Enum.EasingDirection.Out,
+                    {
+                        Position = popupTargetPosition,
+                        Size = UDim2.fromOffset(popupWidth, popupTargetHeight),
+                        BackgroundTransparency = 0,
+                    }
+                )
+                motionTween(
+                    arrow,
+                    Motion.Popup,
+                    Enum.EasingStyle.Quart,
+                    Enum.EasingDirection.Out,
+                    {Rotation = 180, TextColor3 = Theme.BrightText}
+                )
+
                 window.OpenPopup = object
             end
 
@@ -2685,12 +3020,23 @@ function PuckUI:CreateWindow(settings)
 
                 value = nextValue
                 valueLabel.Text = tostring(value) .. suffix
-                fill.Size = UDim2.new(
+                local targetFill = UDim2.new(
                     (value - minimum) / math.max(maximum - minimum, 1),
                     0,
                     1,
                     0
                 )
+                if draggingSlider then
+                    fill.Size = targetFill
+                else
+                    motionTween(
+                        fill,
+                        Motion.Toggle,
+                        Enum.EasingStyle.Quad,
+                        Enum.EasingDirection.Out,
+                        {Size = targetFill}
+                    )
+                end
 
                 if flag then
                     PuckUI.Flags[flag] = value
@@ -2911,6 +3257,30 @@ function PuckUI:CreateWindow(settings)
 
             return object
         end
+
+        button.MouseEnter:Connect(function()
+            if window.CurrentTab ~= tab and button.Parent then
+                motionTween(
+                    button,
+                    Motion.Hover,
+                    Enum.EasingStyle.Quad,
+                    Enum.EasingDirection.Out,
+                    {TextColor3 = Theme.BrightText}
+                )
+            end
+        end)
+
+        button.MouseLeave:Connect(function()
+            if window.CurrentTab ~= tab and button.Parent then
+                motionTween(
+                    button,
+                    Motion.Hover,
+                    Enum.EasingStyle.Quad,
+                    Enum.EasingDirection.Out,
+                    {TextColor3 = Theme.Text}
+                )
+            end
+        end)
 
         button.MouseButton1Click:Connect(function()
             window:SelectTab(tab)
@@ -3153,56 +3523,189 @@ function PuckUI:CreateWindow(settings)
         return tab
     end
 
-    close.MouseButton1Click:Connect(function()
-        if window.CloseCallback then
-            window.CloseCallback()
-        else
-            window:Destroy()
+    close.MouseEnter:Connect(function()
+        if close.Parent then
+            motionTween(close, Motion.Hover, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {
+                TextColor3 = Theme.Danger,
+            })
         end
     end)
 
-    minimize.MouseButton1Click:Connect(function()
+    close.MouseLeave:Connect(function()
+        if close.Parent then
+            motionTween(close, Motion.Hover, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {
+                TextColor3 = Theme.DimText,
+            })
+        end
+    end)
+
+    minimize.MouseEnter:Connect(function()
+        if minimize.Parent then
+            motionTween(minimize, Motion.Hover, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {
+                TextColor3 = Theme.BrightText,
+            })
+        end
+    end)
+
+    minimize.MouseLeave:Connect(function()
+        if minimize.Parent and not window.WindowAnimating then
+            motionTween(minimize, Motion.Hover, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, {
+                TextColor3 = Theme.DimText,
+            })
+        end
+    end)
+
+    close.MouseButton1Click:Connect(function()
         window:ClosePopup()
+        window.VisibilityAnimationGeneration += 1
+        motionTween(
+            main,
+            Motion.Visibility,
+            Enum.EasingStyle.Quad,
+            Enum.EasingDirection.In,
+            {GroupTransparency = 1}
+        )
+        if shadow.Visible then
+            motionTween(
+                shadow,
+                Motion.Visibility,
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.In,
+                {BackgroundTransparency = 1}
+            )
+        end
+
+        task.delay(Motion.Visibility, function()
+            if window.CloseCallback then
+                window.CloseCallback()
+            else
+                window:Destroy()
+            end
+        end)
+    end)
+
+    minimize.MouseButton1Click:Connect(function()
+        if window.WindowAnimating then
+            return
+        end
+
+        window:ClosePopup()
+        window.WindowAnimationGeneration += 1
+        local generation = window.WindowAnimationGeneration
+        window.WindowAnimating = true
         window.Minimized = not window.Minimized
 
-        local expanded = not window.Minimized
-        tabBar.Visible = expanded
-        accentTop.Visible = expanded
-        tabSeparatorDark.Visible = expanded
-        tabSeparator.Visible = expanded
-        columnsHost.Visible = expanded
+        local miniHeight = window.ResolvedLayout == "Phone" and 34 or 27
 
         if window.Minimized then
-            local miniHeight = window.ResolvedLayout == "Phone" and 34 or 27
-            main.Size = UDim2.fromOffset(window.FullSize.X.Offset, miniHeight)
-            shadow.Size = main.Size
-            shadow.Visible = false
             minimize.Text = "+"
+            motionTween(
+                minimize,
+                Motion.Window,
+                Enum.EasingStyle.Quart,
+                Enum.EasingDirection.Out,
+                {TextColor3 = Theme.BrightText, Rotation = 180}
+            )
 
-            -- The collapsed title bar itself can never leave the viewport.
-            window:ClampToViewport(6, "Current")
-        else
-            main.Size = window.FullSize
-            shadow.Size = window.FullSize
             shadow.Visible = window.Visible ~= false
-            minimize.Text = "-"
+            motionTween(
+                shadow,
+                Motion.Window * 0.8,
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.In,
+                {
+                    Size = UDim2.fromOffset(window.FullSize.X.Offset, miniHeight),
+                    BackgroundTransparency = 1,
+                }
+            )
+            motionTween(
+                main,
+                Motion.Window,
+                Enum.EasingStyle.Quart,
+                Enum.EasingDirection.Out,
+                {Size = UDim2.fromOffset(window.FullSize.X.Offset, miniHeight)}
+            )
 
-            -- Restore only to a position where the ENTIRE expanded window fits.
+            task.delay(Motion.Window * 0.82, function()
+                if generation ~= window.WindowAnimationGeneration or not window.Minimized then
+                    return
+                end
+
+                tabBar.Visible = false
+                accentTop.Visible = false
+                tabSeparatorDark.Visible = false
+                tabSeparator.Visible = false
+                columnsHost.Visible = false
+            end)
+
+            task.delay(Motion.Window + 0.025, function()
+                if generation ~= window.WindowAnimationGeneration or not window.Minimized then
+                    return
+                end
+                shadow.Visible = false
+                window.WindowAnimating = false
+                window:ClampToViewport(6, "Current")
+            end)
+        else
+            -- Clamp using the future full size before the expansion starts so the
+            -- window never animates off-screen and then jumps back afterward.
             window:ClampToViewport(
                 window.ResolvedLayout == "Phone" and 6 or 8,
                 "Expanded"
             )
 
-            -- Re-check once Roblox has refreshed AbsoluteSize after the resize.
-            task.defer(function()
-                if window.ScreenGui
-                    and window.ScreenGui.Parent
-                    and not window.Minimized then
-                    window:ClampToViewport(
-                        window.ResolvedLayout == "Phone" and 6 or 8,
-                        "Expanded"
-                    )
+            tabBar.Visible = true
+            accentTop.Visible = true
+            tabSeparatorDark.Visible = true
+            tabSeparator.Visible = true
+            columnsHost.Visible = true
+
+            if window.CurrentTab and window.CurrentTab.Container then
+                window.CurrentTab.Container.Visible = true
+            end
+
+            shadow.Visible = window.Visible ~= false
+            shadow.BackgroundTransparency = 1
+            shadow.Size = UDim2.fromOffset(window.FullSize.X.Offset, miniHeight)
+
+            minimize.Text = "-"
+            minimize.Rotation = 180
+
+            motionTween(
+                minimize,
+                Motion.Window,
+                Enum.EasingStyle.Quart,
+                Enum.EasingDirection.Out,
+                {TextColor3 = Theme.DimText, Rotation = 0}
+            )
+            motionTween(
+                shadow,
+                Motion.Window,
+                Enum.EasingStyle.Quart,
+                Enum.EasingDirection.Out,
+                {
+                    Size = window.FullSize,
+                    BackgroundTransparency = 0.5,
+                }
+            )
+            motionTween(
+                main,
+                Motion.Window,
+                Enum.EasingStyle.Quart,
+                Enum.EasingDirection.Out,
+                {Size = window.FullSize}
+            )
+
+            task.delay(Motion.Window + 0.03, function()
+                if generation ~= window.WindowAnimationGeneration or window.Minimized then
+                    return
                 end
+
+                window.WindowAnimating = false
+                window:ClampToViewport(
+                    window.ResolvedLayout == "Phone" and 6 or 8,
+                    "Expanded"
+                )
             end)
         end
     end)
