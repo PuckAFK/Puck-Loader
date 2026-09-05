@@ -11,11 +11,12 @@
       Magic Loot             : 133188236593503
       Sniper Arena universe  : GameId 9534705677 (all current/future subplaces)
       One Tap universe       : GameId 9294074907 (root PlaceId 90568084448279)
+      Kick a Lucky Block     : GameId 10004244222 (root PlaceId 89469502395769)
       Murder Mystery 2       : 142823291
       Build a Gun Army        : 134162299584012
 
     One free loader for all supported PuckAFK scripts.
-    Includes automatic PlaceId + universe detection, a manual script dropdown, and universal anti-AFK.
+    Includes strict automatic PlaceId + universe detection and universal anti-AFK.
 ]]
 
 local ENV = (getgenv and getgenv()) or _G
@@ -176,14 +177,22 @@ local ONE_TAP_ROUTE = {
     url = "https://raw.githubusercontent.com/PuckAFK/One-Tap/main/onetap.lua",
 }
 
+local KICK_A_LUCKY_BLOCK_ROUTE = {
+    name = "Kick a Lucky Block",
+    source = "github.com/PuckAFK/Kick-a-Lucky-Block",
+    url = "https://raw.githubusercontent.com/PuckAFK/Kick-a-Lucky-Block/main/Kick%20a%20Lucky%20Block.lua",
+}
+
 local UNIVERSE_ROUTES = {
     -- Universe routing keeps supported subplaces working without hardcoding each PlaceId.
     [9534705677] = SNIPER_ARENA_ROUTE,
     [9294074907] = ONE_TAP_ROUTE,
+    [10004244222] = KICK_A_LUCKY_BLOCK_ROUTE,
 }
 
 local ROUTES = {
     [90568084448279] = ONE_TAP_ROUTE,
+    [89469502395769] = KICK_A_LUCKY_BLOCK_ROUTE,
     [83038462357724] = {
         name = "Dig & Clean",
         source = "github.com/PuckAFK/Dig-Clean-",
@@ -206,8 +215,8 @@ local ROUTES = {
     },
     [133188236593503] = {
         name = "Magic Loot",
-        source = "github.com/PuckAFK/Magic-Loot",
-        url = "https://raw.githubusercontent.com/PuckAFK/Magic-Loot/main/Magic%20Loot.lua",
+        source = "puckafk.site/scripts/magic-loot/autofarm.lua",
+        url = "https://puckafk.site/scripts/magic-loot/autofarm.lua",
     },
     [128481067661991] = {
         name = "Get Rich ASAP",
@@ -760,7 +769,7 @@ local contentHost = create("Frame", {
     Size = UDim2.new(1, LOADER_LAYOUT == "Phone" and -28 or -48, 0, 132),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
-    ClipsDescendants = true,
+    ClipsDescendants = false,
     ZIndex = 6,
     Parent = card,
 })
@@ -995,318 +1004,88 @@ local function fetchSource(url)
     return false, result or "HTTP request unavailable"
 end
 
-local function chooseRouteManually(placeId)
+local function showUnsupportedGame(placeId, universeId)
     if cancelled then
-        return nil
+        return
     end
-
-    setStatus(
-        "Choose a Script",
-        "Automatic detection did not find this game"
-    )
-    setProgress(0.30)
-
-
-    local picker = create("CanvasGroup", {
-        Name = "ManualDropdown",
-        Position = UDim2.fromOffset(28, 100),
-        Size = UDim2.new(1, -56, 0, 34),
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        GroupTransparency = 1,
-        ZIndex = 40,
-        Parent = section,
-    })
-
-
-    local selector = create("TextButton", {
-        Name = "Selector",
-        Size = UDim2.new(1, 0, 0, 30),
-        BackgroundColor3 = THEME.Element,
-        BorderColor3 = THEME.BorderDark,
-        BorderSizePixel = 1,
-        AutoButtonColor = false,
-        Font = Enum.Font.Code,
-        Text = "  select script...",
-        TextColor3 = THEME.Text,
-        TextSize = 11,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 42,
-        Parent = picker,
-    })
-
-    create("Frame", {
-        Position = UDim2.fromOffset(1, 1),
-        Size = UDim2.new(1, -2, 1, -2),
-        BackgroundTransparency = 1,
-        BorderColor3 = THEME.Border,
-        BorderSizePixel = 1,
-        ZIndex = 43,
-        Parent = selector,
-    })
-
-    local arrow = codeLabel(
-        selector,
-        "v",
-        11,
-        THEME.DimText,
-        44
-    )
-    arrow.AnchorPoint = Vector2.new(1, 0)
-    arrow.Position = UDim2.new(1, -8, 0, 0)
-    arrow.Size = UDim2.fromOffset(18, 30)
-    arrow.TextXAlignment = Enum.TextXAlignment.Center
-
-    local menu = create("ScrollingFrame", {
-        Name = "Options",
-        Position = UDim2.fromOffset(0, 36),
-        Size = UDim2.new(1, 0, 0, 154),
-        BackgroundColor3 = THEME.Section,
-        BorderColor3 = THEME.BorderDark,
-        BorderSizePixel = 1,
-        CanvasSize = UDim2.new(),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ScrollBarThickness = 2,
-        ScrollBarImageColor3 = THEME.DimText,
-        ScrollingDirection = Enum.ScrollingDirection.Y,
-        Visible = false,
-        ZIndex = 60,
-        Parent = picker,
-    })
-
-    create("Frame", {
-        Position = UDim2.fromOffset(1, 1),
-        Size = UDim2.new(1, -2, 1, -2),
-        BackgroundTransparency = 1,
-        BorderColor3 = THEME.Border,
-        BorderSizePixel = 1,
-        ZIndex = 61,
-        Parent = menu,
-    })
-
-    create("UIPadding", {
-        PaddingTop = UDim.new(0, 5),
-        PaddingBottom = UDim.new(0, 5),
-        PaddingLeft = UDim.new(0, 5),
-        PaddingRight = UDim.new(0, 5),
-        Parent = menu,
-    })
-
-    create("UIListLayout", {
-        Padding = UDim.new(0, 4),
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Parent = menu,
-    })
-
-    local manualRoutes = {
-        ROUTES[83038462357724],
-        ROUTES[134162299584012],
-        ROUTES[142823291],
-        SNIPER_ARENA_ROUTE,
-        ONE_TAP_ROUTE,
-        ROUTES[74889851913797],
-        ROUTES[133188236593503],
-        ROUTES[128481067661991],
-        ROUTES[137233438285284],
-        ROUTES[131558436575033],
-        ROUTES[114697347887839],
-    }
-
-    local selectedRoute = nil
-    local open = false
-    local busy = false
-
-    local function setDropdown(openState)
-        if busy or cancelled then
-            return
-        end
-
-        open = openState == true
-        LOADER_EXPANDED = open
-
-        if open then
-            menu.Visible = true
-            arrow.Text = "^"
-
-            tween(
-                card,
-                0.18,
-                {Size = UDim2.fromOffset(WINDOW_WIDTH, EXPANDED_HEIGHT)}
-            )
-
-            tween(
-                shadow,
-                0.18,
-                {Size = UDim2.fromOffset(WINDOW_WIDTH, EXPANDED_HEIGHT)}
-            )
-
-            tween(
-                picker,
-                0.18,
-                {Size = UDim2.new(1, -56, 0, 196)}
-            )
-        else
-            arrow.Text = "v"
-            menu.Visible = false
-
-            tween(
-                card,
-                0.18,
-                {Size = targetCardSize}
-            )
-
-            tween(
-                shadow,
-                0.18,
-                {Size = targetCardSize}
-            )
-
-            tween(
-                picker,
-                0.18,
-                {Size = UDim2.new(1, -56, 0, 34)}
-            )
-        end
-    end
-
-    selector.MouseEnter:Connect(function()
-        if not busy then
-            tween(
-                selector,
-                0.08,
-                {BackgroundColor3 = THEME.ElementHover}
-            )
-        end
-    end)
-
-    selector.MouseLeave:Connect(function()
-        if not busy then
-            tween(
-                selector,
-                0.08,
-                {BackgroundColor3 = THEME.Element}
-            )
-        end
-    end)
-
-    selector.MouseButton1Click:Connect(function()
-        setDropdown(not open)
-    end)
-
-    for index, option in ipairs(manualRoutes) do
-        local routeOption = {
-            name = option.name,
-            source = option.source,
-            url = option.url,
-        }
-
-        local item = create("TextButton", {
-            Name = "Option" .. tostring(index),
-            LayoutOrder = index,
-            Size = UDim2.new(1, -2, 0, 27),
-            BackgroundColor3 = THEME.Element,
-            BorderColor3 = THEME.BorderDark,
-            BorderSizePixel = 1,
-            AutoButtonColor = false,
-            Font = Enum.Font.Code,
-            Text = "  " .. routeOption.name,
-            TextColor3 = THEME.Text,
-            TextSize = 11,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 62,
-            Parent = menu,
-        })
-
-        create("Frame", {
-            Position = UDim2.fromOffset(1, 1),
-            Size = UDim2.new(1, -2, 1, -2),
-            BackgroundTransparency = 1,
-            BorderColor3 = THEME.Border,
-            BorderSizePixel = 1,
-            ZIndex = 63,
-            Parent = item,
-        })
-
-        item.MouseEnter:Connect(function()
-            if not busy then
-                tween(
-                    item,
-                    0.08,
-                    {BackgroundColor3 = THEME.ElementHover}
-                )
-            end
-        end)
-
-        item.MouseLeave:Connect(function()
-            if not busy then
-                tween(
-                    item,
-                    0.08,
-                    {BackgroundColor3 = THEME.Element}
-                )
-            end
-        end)
-
-        item.MouseButton1Click:Connect(function()
-            if busy or cancelled then
-                return
-            end
-
-            busy = true
-
-            selectedRoute = {
-                name = routeOption.name,
-                source = routeOption.source,
-                url = routeOption.url,
-            }
-
-            selector.Text = "  " .. selectedRoute.name
-
-            setStatus(
-                selectedRoute.name,
-                "Preparing script..."
-            )
-
-            item.BackgroundColor3 = THEME.ElementHover
-
-            open = false
-            menu.Visible = false
-            arrow.Text = "v"
-
-            task.wait(0.12)
-        end)
-    end
-
-    tween(picker, 0.12, {GroupTransparency = 0})
-
-    while not selectedRoute
-        and gui.Parent
-        and not cancelled do
-        task.wait(0.03)
-    end
-
-    if cancelled or not selectedRoute then
-        return nil
-    end
-
-    local fade = tween(
-        picker,
-        0.10,
-        {GroupTransparency = 1}
-    )
-
-    fade.Completed:Wait()
-
-    if picker.Parent then
-        picker:Destroy()
-    end
-
 
     LOADER_EXPANDED = false
     card.Size = targetCardSize
     shadow.Size = targetCardSize
 
-    return selectedRoute
+    progressTrack.Visible = false
+    autoText.Visible = false
+
+    accentTop.BackgroundColor3 = THEME.Danger
+
+    setStatus(
+        "Game Unsupported",
+        "This game is not supported by PuckAFK Hub"
+    )
+
+    local unsupportedInfo = codeLabel(
+        section,
+        "PlaceId " .. tostring(placeId)
+            .. "  |  GameId " .. tostring(universeId),
+        9,
+        THEME.DimText,
+        20
+    )
+    unsupportedInfo.AnchorPoint = Vector2.new(0.5, 0)
+    unsupportedInfo.Position = UDim2.new(0.5, 0, 0, 76)
+    unsupportedInfo.Size = UDim2.new(1, -28, 0, 14)
+    unsupportedInfo.TextXAlignment = Enum.TextXAlignment.Center
+    unsupportedInfo.TextTruncate = Enum.TextTruncate.AtEnd
+
+    local unsupportedClose = create("TextButton", {
+        Name = "UnsupportedClose",
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0, 96),
+        Size = UDim2.fromOffset(128, 28),
+        BackgroundColor3 = THEME.Element,
+        BorderColor3 = THEME.BorderDark,
+        BorderSizePixel = 1,
+        AutoButtonColor = false,
+        Font = Enum.Font.Code,
+        Text = "Close",
+        TextColor3 = THEME.BrightText,
+        TextSize = 11,
+        ZIndex = 22,
+        Parent = section,
+    })
+
+    create("Frame", {
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
+        BackgroundTransparency = 1,
+        BorderColor3 = THEME.Border,
+        BorderSizePixel = 1,
+        ZIndex = 23,
+        Parent = unsupportedClose,
+    })
+
+    unsupportedClose.MouseEnter:Connect(function()
+        tween(
+            unsupportedClose,
+            0.08,
+            {BackgroundColor3 = THEME.ElementHover}
+        )
+    end)
+
+    unsupportedClose.MouseLeave:Connect(function()
+        tween(
+            unsupportedClose,
+            0.08,
+            {BackgroundColor3 = THEME.Element}
+        )
+    end)
+
+    unsupportedClose.MouseButton1Click:Connect(function()
+        cancelled = true
+        pcall(function()
+            gui:Destroy()
+        end)
+    end)
 end
 
 -- Restrained PuckUI entrance animation.
@@ -1382,17 +1161,12 @@ task.spawn(function()
     task.wait(0.20)
 
     if not route then
-        route = chooseRouteManually(placeId)
-
-        if not route then
-            fail("No Script Selected", "Manual script selection was closed")
-            return
-        end
+        showUnsupportedGame(placeId, universeId)
+        return
     end
 
-    -- Automatic detection and manual selection intentionally converge here.
-    -- Whatever the user selected is the exact published script source that gets fetched,
-    -- compiled, and executed. No preview/fake substitute is used.
+    -- Strict loader: only routes explicitly recognized above may reach the
+    -- download / compile / launch pipeline.
     if cancelled then return end
 
 
