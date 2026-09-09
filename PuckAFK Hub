@@ -7,8 +7,15 @@
       SevenM Hood            : 131558436575033
       +1 Speed Monkey Escape : 114697347887839
       +1 Power Per Click     : 74889851913797
+      +1 Cut Grass Adventure : 90086669327265
+      +1 Drain Water Per Click: 103883942725157
+      +1 Web Swing Escape    : 110668201954727
+      +1 Fat Per Click        : 128329680321338
+      Cold War                : 13687899540 (GameId 4750561026)
+      Jump for Animals         : 126870639873289 (GameId 10690360998)
       Dig & Clean             : 83038462357724
       Magic Loot             : 133188236593503
+      Blox Fruits universe   : GameId 994732206 (Sea 1 / Sea 2 / Sea 3)
       Sniper Arena universe  : GameId 9534705677 (all current/future subplaces)
       One Tap universe       : GameId 9294074907 (root PlaceId 90568084448279)
       Kick a Lucky Block     : GameId 10004244222 (root PlaceId 89469502395769)
@@ -183,14 +190,74 @@ local KICK_A_LUCKY_BLOCK_ROUTE = {
     url = "https://raw.githubusercontent.com/PuckAFK/Kick-a-Lucky-Block/main/Kick%20a%20Lucky%20Block.lua",
 }
 
+local BLOX_FRUITS_ROUTE = {
+    name = "Blox Fruits",
+    source = "github.com/PuckAFK/Blox-Fruits",
+    url = "https://raw.githubusercontent.com/PuckAFK/Blox-Fruits/refs/heads/main/Blox%20Fruits.lua",
+}
+
+local CUT_GRASS_ADVENTURE_ROUTE = {
+    name = "+1 Cut Grass Adventure",
+    source = "github.com/PuckAFK/-1-Cut-Grass-Adventure",
+    url = "https://raw.githubusercontent.com/PuckAFK/-1-Cut-Grass-Adventure/refs/heads/main/%2B1%20Cut%20Grass%20Adventure.lua",
+}
+
+
+local DRAIN_WATER_ROUTE = {
+    name = "+1 Drain Water Per Click",
+    source = "github.com/PuckAFK/-1-Drain-Water-Per-Click",
+    url = "https://raw.githubusercontent.com/PuckAFK/-1-Drain-Water-Per-Click/refs/heads/main/%2B1%20Drain%20Water%20Per%20Click.lua",
+}
+
+
+local FAT_PER_CLICK_ROUTE = {
+    name = "+1 Fat Per Click",
+    source = "github.com/PuckAFK/-1-Fat-Per-Click",
+    url = "https://raw.githubusercontent.com/PuckAFK/-1-Fat-Per-Click/refs/heads/main/%2B1%20Fat%20Per%20Click.lua",
+}
+
+local JUMP_FOR_ANIMALS_ROUTE = {
+    name = "Jump for Animals",
+    source = "github.com/PuckAFK/Jump-for-Animals-",
+    url = "https://raw.githubusercontent.com/PuckAFK/Jump-for-Animals-/refs/heads/main/Jump%20for%20Animals!",
+}
+
+local COLD_WAR_ROUTE = {
+    name = "Cold War",
+    source = "github.com/PuckAFK/Cold-War",
+    url = "https://raw.githubusercontent.com/PuckAFK/Cold-War/refs/heads/main/Cold%20War",
+}
+
+local WEB_SWING_ESCAPE_ROUTE = {
+    name = "+1 Web Swing Escape",
+    source = "github.com/PuckAFK/-1-Web-Swing-Escape",
+    url = "https://raw.githubusercontent.com/PuckAFK/-1-Web-Swing-Escape/refs/heads/main/%2B1%20Web%20Swing%20Escape.lua",
+}
+
 local UNIVERSE_ROUTES = {
+    [10690360998] = JUMP_FOR_ANIMALS_ROUTE,
+    [4750561026] = COLD_WAR_ROUTE,
+    [10329213173] = FAT_PER_CLICK_ROUTE,
+    [10601447895] = WEB_SWING_ESCAPE_ROUTE,
+    [10561352230] = DRAIN_WATER_ROUTE,
+    [10410945205] = CUT_GRASS_ADVENTURE_ROUTE,
     -- Universe routing keeps supported subplaces working without hardcoding each PlaceId.
     [9534705677] = SNIPER_ARENA_ROUTE,
     [9294074907] = ONE_TAP_ROUTE,
     [10004244222] = KICK_A_LUCKY_BLOCK_ROUTE,
+    [994732206] = BLOX_FRUITS_ROUTE,
 }
 
 local ROUTES = {
+    [126870639873289] = JUMP_FOR_ANIMALS_ROUTE,
+    [13687899540] = COLD_WAR_ROUTE,
+    [128329680321338] = FAT_PER_CLICK_ROUTE,
+    [110668201954727] = WEB_SWING_ESCAPE_ROUTE,
+    [103883942725157] = DRAIN_WATER_ROUTE,
+    [90086669327265] = CUT_GRASS_ADVENTURE_ROUTE,
+    [2753915549] = BLOX_FRUITS_ROUTE,
+    [4442272183] = BLOX_FRUITS_ROUTE,
+    [7449423635] = BLOX_FRUITS_ROUTE,
     [90568084448279] = ONE_TAP_ROUTE,
     [89469502395769] = KICK_A_LUCKY_BLOCK_ROUTE,
     [83038462357724] = {
@@ -215,8 +282,8 @@ local ROUTES = {
     },
     [133188236593503] = {
         name = "Magic Loot",
-        source = "puckafk.site/scripts/magic-loot/autofarm.lua",
-        url = "https://puckafk.site/scripts/magic-loot/autofarm.lua",
+        source = "github.com/PuckAFK/Magic-Loot",
+        url = "https://raw.githubusercontent.com/PuckAFK/Magic-Loot/refs/heads/main/Magic%20Loot.lua",
     },
     [128481067661991] = {
         name = "Get Rich ASAP",
@@ -944,7 +1011,7 @@ local function fail(stage, message)
     setStatus(
         "Load Failed",
         tostring(stage or "Loader Error")
-            .. " • "
+            .. " â€¢ "
             .. tostring(message or "Unknown error"),
         THEME.BrightText
     )
