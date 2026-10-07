@@ -11,8 +11,21 @@
       +1 Drain Water Per Click: 103883942725157
       +1 Web Swing Escape    : 110668201954727
       +1 Fat Per Click        : 128329680321338
+      +1 Lift Rock for Treasure: 102555956950143
+      +1 Strength to Grow Arm : 86259628805375 (GameId 10310999762)
+      +1 Bite Per Click       : 124731807130219 (GameId 10534873486)
       Cold War                : 13687899540 (GameId 4750561026)
+      Murderers VS Sheriffs   : GameId 7219654364 (root / 1v1 / 2v2 / 3v3 / 4v4 / FFA / Pro / future subplaces)
+      DUELS root               : 135856908115931
+      DUELS 1v1                : 124848751642883
+      DUELS 2v2                : 92876937625630
+      DUELS 3v3                : 101617670515690
+      DUELS 4v4                : 123627218337521
+      DUELS FFA                : 114176825419426
+      DUELS Pro Servers        : 74084441161738
       Jump for Animals         : 126870639873289 (GameId 10690360998)
+      Dungeon Lootr universe   : GameId 9656201728 (lobby / dungeon / AFK)
+      Loot Up universe         : GameId 9280810829 (root PlaceId 83622406313819)
       Dig & Clean             : 83038462357724
       Magic Loot             : 133188236593503
       Blox Fruits universe   : GameId 994732206 (Sea 1 / Sea 2 / Sea 3)
@@ -21,6 +34,7 @@
       Kick a Lucky Block     : GameId 10004244222 (root PlaceId 89469502395769)
       Murder Mystery 2       : 142823291
       Build a Gun Army        : 134162299584012
+      Ping Pong Training       : 137737622318848
 
     One free loader for all supported PuckAFK scripts.
     Includes strict automatic PlaceId + universe detection and universal anti-AFK.
@@ -210,6 +224,26 @@ local DRAIN_WATER_ROUTE = {
 }
 
 
+
+
+local STRENGTH_ARM_ROUTE = {
+    name = "+1 Strength to Grow Your Arm!",
+    source = "github.com/PuckAFK/-1-Strength-to-Grow-Your-Arm-",
+    url = "https://raw.githubusercontent.com/PuckAFK/-1-Strength-to-Grow-Your-Arm-/refs/heads/main/%2B1%20Strength%20to%20Grow%20Your%20Arm%EF%BC%81.lua",
+}
+
+local LIFT_ROCK_ROUTE = {
+    name = "+1 Lift Rock for Treasure",
+    source = "github.com/PuckAFK/-1-Lift-Rock-for-Treasure",
+    url = "https://raw.githubusercontent.com/PuckAFK/-1-Lift-Rock-for-Treasure/refs/heads/main/%2B1%20Lift%20Rock%20for%20Treasure.lua",
+}
+
+local BITE_PER_CLICK_ROUTE = {
+    name = "+1 Bite Per Click",
+    source = "github.com/PuckAFK/-1-Bite-Per-Click",
+    url = "https://raw.githubusercontent.com/PuckAFK/-1-Bite-Per-Click/refs/heads/main/%2B1%20Bite%20Per%20Click.lua",
+}
+
 local FAT_PER_CLICK_ROUTE = {
     name = "+1 Fat Per Click",
     source = "github.com/PuckAFK/-1-Fat-Per-Click",
@@ -220,6 +254,26 @@ local JUMP_FOR_ANIMALS_ROUTE = {
     name = "Jump for Animals",
     source = "github.com/PuckAFK/Jump-for-Animals-",
     url = "https://raw.githubusercontent.com/PuckAFK/Jump-for-Animals-/refs/heads/main/Jump%20for%20Animals!",
+}
+
+
+local LOOT_UP_ROUTE = {
+    name = "Loot Up",
+    source = "github.com/PuckAFK/Loot-Up",
+    url = "https://raw.githubusercontent.com/PuckAFK/Loot-Up/refs/heads/main/Loot%20Up.lua",
+}
+
+local DUNGEON_LOOTR_ROUTE = {
+    name = "Dungeon Lootr",
+    source = "github.com/PuckAFK/Dungeon-Lootr",
+    url = "https://raw.githubusercontent.com/PuckAFK/Dungeon-Lootr/refs/heads/main/Dungeon%20Lootr.lua",
+}
+
+
+local MURDERERS_VS_SHERIFFS_ROUTE = {
+    name = "Murderers VS Sheriffs",
+    source = "github.com/PuckAFK/Murderers-VS-Sheriffs",
+    url = "https://raw.githubusercontent.com/PuckAFK/Murderers-VS-Sheriffs/refs/heads/main/Murderers%20VS%20Sheriffs.lua",
 }
 
 local COLD_WAR_ROUTE = {
@@ -234,10 +288,23 @@ local WEB_SWING_ESCAPE_ROUTE = {
     url = "https://raw.githubusercontent.com/PuckAFK/-1-Web-Swing-Escape/refs/heads/main/%2B1%20Web%20Swing%20Escape.lua",
 }
 
+
+local PING_PONG_TRAINING_ROUTE = {
+    name = "Ping Pong Training",
+    source = "github.com/PuckAFK/Ping-Pong-Training",
+    url = "https://raw.githubusercontent.com/PuckAFK/Ping-Pong-Training/refs/heads/main/Ping%20Pong%20Training.lua",
+}
+
 local UNIVERSE_ROUTES = {
+    [10310999762] = STRENGTH_ARM_ROUTE,
+    [7219654364] = MURDERERS_VS_SHERIFFS_ROUTE, -- full DUELS Murderers VS Sheriffs universe
+    [9280810829] = LOOT_UP_ROUTE,
+    [9656201728] = DUNGEON_LOOTR_ROUTE,
+    [10004532523] = DUNGEON_LOOTR_ROUTE, -- test universe supported by the published script
     [10690360998] = JUMP_FOR_ANIMALS_ROUTE,
     [4750561026] = COLD_WAR_ROUTE,
     [10329213173] = FAT_PER_CLICK_ROUTE,
+    [10534873486] = BITE_PER_CLICK_ROUTE,
     [10601447895] = WEB_SWING_ESCAPE_ROUTE,
     [10561352230] = DRAIN_WATER_ROUTE,
     [10410945205] = CUT_GRASS_ADVENTURE_ROUTE,
@@ -249,9 +316,20 @@ local UNIVERSE_ROUTES = {
 }
 
 local ROUTES = {
+    [137737622318848] = PING_PONG_TRAINING_ROUTE,
+    [86259628805375] = STRENGTH_ARM_ROUTE,
+    [102555956950143] = LIFT_ROCK_ROUTE,
+    [83622406313819] = LOOT_UP_ROUTE,
+    [106484206883664] = DUNGEON_LOOTR_ROUTE, -- live lobby
+    [132285059959516] = DUNGEON_LOOTR_ROUTE, -- live dungeon
+    [129976314326660] = DUNGEON_LOOTR_ROUTE, -- live AFK
+    [95503046258891] = DUNGEON_LOOTR_ROUTE, -- test lobby
+    [89954929513873] = DUNGEON_LOOTR_ROUTE, -- test dungeon
+    [103006040833273] = DUNGEON_LOOTR_ROUTE, -- test AFK
     [126870639873289] = JUMP_FOR_ANIMALS_ROUTE,
     [13687899540] = COLD_WAR_ROUTE,
     [128329680321338] = FAT_PER_CLICK_ROUTE,
+    [124731807130219] = BITE_PER_CLICK_ROUTE,
     [110668201954727] = WEB_SWING_ESCAPE_ROUTE,
     [103883942725157] = DRAIN_WATER_ROUTE,
     [90086669327265] = CUT_GRASS_ADVENTURE_ROUTE,
@@ -260,6 +338,13 @@ local ROUTES = {
     [7449423635] = BLOX_FRUITS_ROUTE,
     [90568084448279] = ONE_TAP_ROUTE,
     [89469502395769] = KICK_A_LUCKY_BLOCK_ROUTE,
+    [135856908115931] = MURDERERS_VS_SHERIFFS_ROUTE, -- DUELS root
+    [124848751642883] = MURDERERS_VS_SHERIFFS_ROUTE, -- DUELS 1v1
+    [92876937625630] = MURDERERS_VS_SHERIFFS_ROUTE, -- DUELS 2v2
+    [101617670515690] = MURDERERS_VS_SHERIFFS_ROUTE, -- DUELS 3v3
+    [123627218337521] = MURDERERS_VS_SHERIFFS_ROUTE, -- DUELS 4v4
+    [114176825419426] = MURDERERS_VS_SHERIFFS_ROUTE, -- DUELS FFA
+    [74084441161738] = MURDERERS_VS_SHERIFFS_ROUTE, -- DUELS Pro Servers
     [83038462357724] = {
         name = "Dig & Clean",
         source = "github.com/PuckAFK/Dig-Clean-",
@@ -1011,7 +1096,7 @@ local function fail(stage, message)
     setStatus(
         "Load Failed",
         tostring(stage or "Loader Error")
-            .. " â€¢ "
+            .. " • "
             .. tostring(message or "Unknown error"),
         THEME.BrightText
     )
