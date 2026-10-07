@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.5 - Classic UI + Real Icons + Native Links
+    PuckAFK Hub | Universal Access Loader v5.6 - Classic UI + Executor Link Compatibility
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -10,13 +10,13 @@
 
     Premium keys are saved locally only after successful validation.
 
-    v5.5 release polish:
+    v5.6 release polish:
       - Preserves the exact classic PuckAFK access-loader layout and proportions.
-      - Fixes stale Free mode causing later executions to skip the chooser.
-      - Keeps the explicit Keep My Choice toggle, off by default.
-      - Uses real Roblox image assets for Discord and action icons without redesigning the UI.
-      - Expands direct browser opening across executor globals and Roblox browser/link bridges.
-      - Keeps the existing compact dark-card styling, Code font, accent line, and animations.
+      - Adds targeted link-opening compatibility for Delta, Real, Synapse Z, Madium,
+        Potassium, Xeno, Nexomia.win, and Solara.
+      - Prioritizes executor-native URL helpers before Roblox browser/link services.
+      - Keeps real icons, Keep My Choice, animations, Premium validation, and key saving.
+      - Never falls back to silently copying Discord or website links.
       - Idempotent GUI cleanup and executor-safe fallbacks.
 ]]
 
@@ -31,6 +31,7 @@ local FREE_LOADER = "https://puckafk.site/loader-free.lua"
 local PREMIUM_API = "https://puckafk.site/api/premium"
 local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/premium"
 local DISCORD_INVITE = "https://discord.gg/NFfs8G2WAz"
+local DISCORD_APP_INVITE = "discord://-/invite/NFfs8G2WAz"
 local PREMIUM_PAGE = "https://puckafk.site/premium/"
 local KEY_FILE = "PuckHub/premium.key"
 local CHOICE_FILE = "PuckHub/access-choice.txt"
@@ -178,22 +179,43 @@ local function clearSavedKey()
     end
 end
 
-local function openWebsite(url)
+local function openWebsite(url, alternateUrl)
     url = trim(url)
+    alternateUrl = trim(alternateUrl)
     if url == "" then return false, "empty-url" end
 
-    -- Executors expose native URL opening under different globals/tables.
-    -- Search the common environments first and invoke only known URL-opener names.
+    local detectedExecutor = string.lower(executorName())
+    local function isExecutor(...)
+        for i = 1, select("#", ...) do
+            local token = string.lower(tostring(select(i, ...)))
+            if token ~= "" and string.find(detectedExecutor, token, 1, true) then
+                return true
+            end
+        end
+        return false
+    end
+
     local openerNames = {
-        "openurl", "open_url", "openUrl", "OpenUrl",
-        "openlink", "open_link", "openLink", "OpenLink",
-        "launchurl", "launch_url", "launchUrl", "LaunchUrl",
+        "openurl", "open_url", "openUrl", "OpenUrl", "OpenURL",
+        "openlink", "open_link", "openLink", "OpenLink", "OpenLINK",
+        "launchurl", "launch_url", "launchUrl", "LaunchUrl", "LaunchURL",
         "openbrowser", "open_browser", "openBrowser", "OpenBrowser",
         "openbrowserwindow", "open_browser_window", "openBrowserWindow", "OpenBrowserWindow",
-        "openuri", "open_uri", "openUri", "OpenUri",
-        "shellopen", "shell_open", "browse", "browser_open",
-        "visiturl", "visit_url",
+        "openexternal", "open_external", "openExternal", "OpenExternal",
+        "openexternalurl", "open_external_url", "openExternalUrl", "OpenExternalUrl", "OpenExternalURL",
+        "openwebsite", "open_website", "openWebsite", "OpenWebsite",
+        "openweb", "open_web", "openWeb", "OpenWeb",
+        "openuri", "open_uri", "openUri", "OpenUri", "OpenURI",
+        "browse", "browseurl", "browse_url", "browseUrl", "BrowseUrl", "BrowseURL",
+        "browser_open", "browseropen", "openinbrowser", "open_in_browser", "openInBrowser", "OpenInBrowser",
+        "visiturl", "visit_url", "visitUrl", "VisitUrl", "VisitURL",
+        "shellopen", "shell_open", "shellOpen", "ShellOpen",
+        "starturl", "start_url", "startUrl", "StartUrl", "StartURL",
+        "navigate", "navigateurl", "navigate_url", "navigateUrl", "NavigateUrl", "NavigateURL",
     }
+
+    local openerSet = {}
+    for _, name in ipairs(openerNames) do openerSet[name] = true end
 
     local tables = {}
     local seenTables = {}
@@ -206,14 +228,49 @@ local function openWebsite(url)
 
     addTable(ENV, "executor")
     addTable(_G, "_G")
-    addTable(rawget(ENV, "syn"), "syn")
-    addTable(rawget(ENV, "fluxus"), "fluxus")
-    addTable(rawget(ENV, "krnl"), "krnl")
-    addTable(rawget(ENV, "executor"), "executor-table")
-    addTable(rawget(ENV, "wave"), "wave")
-    addTable(rawget(ENV, "solara"), "solara")
-    addTable(rawget(ENV, "swift"), "swift")
-    addTable(rawget(ENV, "delta"), "delta")
+    for _, rootName in ipairs({
+        "syn", "Synapse", "synapse", "synapsez", "synapse_z", "SynapseZ",
+        "delta", "Delta",
+        "real", "Real",
+        "madium", "Madium",
+        "potassium", "Potassium",
+        "xeno", "Xeno",
+        "nexomia", "Nexomia",
+        "solara", "Solara",
+        "fluxus", "krnl", "executor", "wave", "swift",
+    }) do
+        local okRoot, root = pcall(function() return rawget(ENV, rootName) end)
+        if okRoot then addTable(root, rootName) end
+        local okGlobal, globalRoot = pcall(function() return rawget(_G, rootName) end)
+        if okGlobal then addTable(globalRoot, "_G." .. rootName) end
+    end
+
+    local nestedNames = {
+        "browser", "Browser", "web", "Web", "url", "Url", "URL",
+        "links", "Links", "link", "Link",
+        "external", "External", "launcher", "Launcher",
+        "platform", "Platform", "system", "System",
+        "shell", "Shell", "bridge", "Bridge",
+        "utils", "Utils", "utility", "Utility",
+        "api", "API", "client", "Client", "functions", "Functions",
+        "misc", "Misc", "miscellaneous", "Miscellaneous",
+    }
+
+    local function expandNested()
+        local index = 1
+        while index <= #tables do
+            local base = tables[index]
+            for _, nestedName in ipairs(nestedNames) do
+                local okNested, nested = pcall(function() return rawget(base.value, nestedName) end)
+                if okNested and type(nested) == "table" then
+                    addTable(nested, base.label .. "." .. nestedName)
+                end
+            end
+            index = index + 1
+            if index > 96 then break end
+        end
+    end
+    expandNested()
 
     if type(getrenv) == "function" then
         local ok, renv = pcall(getrenv)
@@ -223,25 +280,94 @@ local function openWebsite(url)
         local ok, fenv = pcall(getfenv, 0)
         if ok then addTable(fenv, "getfenv") end
     end
+    expandNested()
+
+    local urls = {url}
+    if alternateUrl ~= "" and alternateUrl ~= url then
+        table.insert(urls, alternateUrl)
+    end
 
     local seenFns = {}
-    for _, entry in ipairs(tables) do
-        local tbl = entry.value
-        for _, name in ipairs(openerNames) do
-            local okRead, fn = pcall(function() return rawget(tbl, name) end)
-            if okRead and type(fn) == "function" and not seenFns[fn] then
-                seenFns[fn] = true
+    local function tryFunction(fn, owner, ownerLabel, fnName, target)
+        if type(fn) ~= "function" or seenFns[fn] then return false end
+        seenFns[fn] = true
 
-                local ok, result = pcall(fn, url)
-                if ok and result ~= false then
-                    return true, entry.label .. "." .. name
-                end
+        local ok, result = pcall(fn, target)
+        if ok and result ~= false then
+            return true, ownerLabel .. "." .. fnName
+        end
 
-                -- Some executor APIs are methods and expect their owning table.
-                ok, result = pcall(fn, tbl, url)
-                if ok and result ~= false then
-                    return true, entry.label .. ":" .. name
+        if owner then
+            ok, result = pcall(fn, owner, target)
+            if ok and result ~= false then
+                return true, ownerLabel .. ":" .. fnName
+            end
+        end
+
+        ok, result = pcall(fn, {Url = target, URL = target, url = target, Link = target, link = target})
+        if ok and result ~= false then
+            return true, ownerLabel .. "." .. fnName .. "(payload)"
+        end
+
+        ok, result = pcall(fn, "open", target)
+        if ok and result ~= false then
+            return true, ownerLabel .. "." .. fnName .. "(open,url)"
+        end
+
+        return false
+    end
+
+    for _, target in ipairs(urls) do
+        local synTable = rawget(ENV, "syn") or rawget(_G, "syn")
+        if type(synTable) == "table" then
+            for _, name in ipairs({"open_url", "openurl", "open_link", "openlink"}) do
+                local okRead, fn = pcall(function() return rawget(synTable, name) end)
+                if okRead then
+                    local okOpen, via = tryFunction(fn, synTable, "syn", name, target)
+                    if okOpen then return true, via end
                 end
+            end
+        end
+
+        local priorityRoots = {}
+        if isExecutor("delta") then priorityRoots = {"delta", "Delta"}
+        elseif isExecutor("synapse z", "synapsez") then priorityRoots = {"syn", "synapsez", "synapse_z", "SynapseZ"}
+        elseif isExecutor("madium") then priorityRoots = {"madium", "Madium"}
+        elseif isExecutor("potassium") then priorityRoots = {"potassium", "Potassium"}
+        elseif isExecutor("xeno") then priorityRoots = {"xeno", "Xeno"}
+        elseif isExecutor("nexomia") then priorityRoots = {"nexomia", "Nexomia"}
+        elseif isExecutor("solara") then priorityRoots = {"solara", "Solara"}
+        elseif isExecutor("real") then priorityRoots = {"real", "Real"}
+        end
+
+        for _, rootName in ipairs(priorityRoots) do
+            local root = rawget(ENV, rootName) or rawget(_G, rootName)
+            if type(root) == "table" then
+                for _, name in ipairs(openerNames) do
+                    local okRead, fn = pcall(function() return rawget(root, name) end)
+                    if okRead then
+                        local okOpen, via = tryFunction(fn, root, rootName, name, target)
+                        if okOpen then return true, via end
+                    end
+                end
+            end
+        end
+
+        for _, entry in ipairs(tables) do
+            local tbl = entry.value
+            for _, name in ipairs(openerNames) do
+                local okRead, fn = pcall(function() return rawget(tbl, name) end)
+                if okRead then
+                    local okOpen, via = tryFunction(fn, tbl, entry.label, name, target)
+                    if okOpen then return true, via end
+                end
+            end
+        end
+
+        for key, value in pairs(ENV) do
+            if openerSet[tostring(key)] and type(value) == "function" then
+                local okOpen, via = tryFunction(value, nil, "getgenv", tostring(key), target)
+                if okOpen then return true, via end
             end
         end
     end
@@ -256,91 +382,42 @@ local function openWebsite(url)
         return service
     end
 
-    -- LinkingService is Roblox's native external-URL bridge. Executors that
-    -- expose RobloxScriptSecurity can call this directly.
-    local linking = getService("LinkingService")
-    if linking then
-        local ok, result = pcall(function()
-            return linking:OpenUrl(url)
-        end)
-        if ok and result ~= false then
-            return true, "LinkingService.OpenUrl"
+    for _, target in ipairs(urls) do
+        local linking = getService("LinkingService")
+        if linking then
+            local ok, result = pcall(function() return linking:OpenUrl(target) end)
+            if ok and result ~= false then return true, "LinkingService:OpenUrl" end
+
+            ok, result = pcall(function()
+                local fn = linking.OpenUrl
+                return fn(linking, target)
+            end)
+            if ok and result ~= false then return true, "LinkingService.OpenUrl" end
+        end
+
+        local guiService = getService("GuiService")
+        if guiService then
+            local ok, result = pcall(function() return guiService:OpenBrowserWindow(target) end)
+            if ok and result ~= false then return true, "GuiService.OpenBrowserWindow" end
+
+            ok, result = pcall(function() return guiService:OpenNativeOverlay(target) end)
+            if ok and result ~= false then return true, "GuiService.OpenNativeOverlay" end
+        end
+
+        local browserService = getService("BrowserService")
+        if browserService then
+            local ok, result = pcall(function() return browserService:OpenBrowserWindow(target) end)
+            if ok and result ~= false then return true, "BrowserService.OpenBrowserWindow" end
+
+            ok, result = pcall(function() return browserService:OpenNativeOverlay(target) end)
+            if ok and result ~= false then return true, "BrowserService.OpenNativeOverlay" end
+
+            ok, result = pcall(function() return browserService:OpenNativeOverlay("PuckAFK", target) end)
+            if ok and result ~= false then return true, "BrowserService.OpenNativeOverlay(title,url)" end
         end
     end
 
-    -- Older executor builds may expose one of these browser bridges instead.
-    local serviceAttempts = {
-        {
-            label = "BrowserService.OpenBrowserWindow",
-            run = function()
-                local service = getService("BrowserService")
-                if not service then error("BrowserService unavailable") end
-                return service:OpenBrowserWindow(url)
-            end,
-        },
-        {
-            label = "GuiService.OpenBrowserWindow",
-            run = function()
-                local service = getService("GuiService")
-                if not service then error("GuiService unavailable") end
-                return service:OpenBrowserWindow(url)
-            end,
-        },
-        {
-            label = "BrowserService.OpenNativeOverlay",
-            run = function()
-                local service = getService("BrowserService")
-                if not service then error("BrowserService unavailable") end
-                return service:OpenNativeOverlay("PuckAFK", url)
-            end,
-        },
-    }
-
-    for _, attempt in ipairs(serviceAttempts) do
-        local ok, result = pcall(attempt.run)
-        if ok and result ~= false then
-            return true, attempt.label
-        end
-    end
-
-    -- Last compatibility pass: some executors only allow these protected
-    -- services while the current thread identity is elevated.
-    local getIdentity = type(getthreadidentity) == "function" and getthreadidentity
-        or (type(getidentity) == "function" and getidentity or nil)
-    local setIdentity = type(setthreadidentity) == "function" and setthreadidentity
-        or (type(setidentity) == "function" and setidentity or nil)
-
-    if getIdentity and setIdentity then
-        local oldIdentity
-        pcall(function() oldIdentity = getIdentity() end)
-        local raised = pcall(setIdentity, 8)
-        if raised then
-            local elevatedLinking = getService("LinkingService")
-            if elevatedLinking then
-                local ok, result = pcall(function()
-                    return elevatedLinking:OpenUrl(url)
-                end)
-                if ok and result ~= false then
-                    if oldIdentity ~= nil then pcall(setIdentity, oldIdentity) end
-                    return true, "LinkingService.OpenUrl/elevated"
-                end
-            end
-
-            local elevatedBrowser = getService("BrowserService")
-            if elevatedBrowser then
-                local ok, result = pcall(function()
-                    return elevatedBrowser:OpenBrowserWindow(url)
-                end)
-                if ok and result ~= false then
-                    if oldIdentity ~= nil then pcall(setIdentity, oldIdentity) end
-                    return true, "BrowserService.OpenBrowserWindow/elevated"
-                end
-            end
-        end
-        if oldIdentity ~= nil then pcall(setIdentity, oldIdentity) end
-    end
-
-    return false, "no-supported-opener"
+    return false, "no-supported-opener:" .. tostring(executorName())
 end
 
 local function fetchText(url)
@@ -875,7 +952,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     local currentHeight = chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.1.0"
+    ENV.PuckHubLoaderVersion = "5.6.0"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
@@ -1298,11 +1375,11 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     createDiscordCard(premium, UDim2.fromOffset(14, 58), UDim2.new(1, -28, 0, 56), function()
         if busy then return end
         setPremiumStatus("Opening PuckAFK Discord...")
-        local opened = openWebsite(DISCORD_INVITE)
+        local opened = openWebsite(DISCORD_INVITE, DISCORD_APP_INVITE)
         if opened then
             setPremiumStatus("PuckAFK Discord opened.", false, true)
         else
-            setPremiumStatus("Could not open the link with this executor build.", true)
+            setPremiumStatus("Could not open externally on " .. executorName() .. ".", true)
         end
     end)
 
@@ -1313,7 +1390,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
         if opened then
             setPremiumStatus("Premium website opened.", false, true)
         else
-            setPremiumStatus("Could not open the link with this executor build.", true)
+            setPremiumStatus("Could not open externally on " .. executorName() .. ".", true)
         end
     end, {ActiveBorderColor3 = THEME.Accent})
     accessIcon(premiumPageButton, ICON.Globe, UDim2.fromOffset(10, 7), UDim2.fromOffset(16, 16), THEME.DimText, 24)
