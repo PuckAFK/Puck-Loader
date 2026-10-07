@@ -1,32 +1,993 @@
 --[[
-    PuckAFK Hub | Canonical Universal Access Bootstrap
+    PuckAFK Hub | Universal Access Loader v4 - Classic UI
+    Canonical URL: https://puckafk.site/loader.lua
 
-    The public entry point is:
-      https://puckafk.site/loader.lua
+    Default flow:
+      1. Choose Free or Premium.
+      2. Free -> launch the public PuckAFK route for the current game.
+      3. Premium -> join Discord/get a key, enter it, validate server-side,
+         then launch the paid Premium source for the current game.
 
-    That loader always gives normal users a Free / Premium choice.
-    Free stays keyless. Premium provides the PuckAFK Discord invite,
-    accepts the PuckHub key, validates it server-side, and only then
-    launches the paid Premium source for the current supported game.
+    Premium keys are saved locally only after successful validation.
 ]]
 
-local URL = "https://puckafk.site/loader.lua"
-local ok, source = pcall(function()
-    return game:HttpGet(URL)
-end)
+local ENV = (type(getgenv) == "function" and getgenv()) or _G
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
-if not ok or type(source) ~= "string" or #source < 50 then
-    error("[PuckAFK Hub] Could not download the canonical loader from puckafk.site.", 0)
+local FREE_LOADER = "https://puckafk.site/loader-free.lua"
+local PREMIUM_API = "https://puckafk.site/api/premium"
+local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/premium"
+local DISCORD_INVITE = "https://discord.gg/NFfs8G2WAz"
+local PREMIUM_PAGE = "https://puckafk.site/premium/"
+local KEY_FILE = "PuckHub/premium.key"
+
+local function trim(value)
+    return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
 end
 
-local compile = loadstring or load
-if type(compile) ~= "function" then
-    error("[PuckAFK Hub] This executor does not provide loadstring/load.", 0)
+local function normalizeKey(value)
+    return trim(value):gsub("%s+", "")
 end
 
-local chunk, compileError = compile(source)
-if not chunk then
-    error("[PuckAFK Hub] Loader compile failed: " .. tostring(compileError), 0)
+local function compiler()
+    return loadstring or load
 end
 
-return chunk()
+local function requestFn()
+    if type(request) == "function" then return request end
+    if type(http_request) == "function" then return http_request end
+    if syn and type(syn.request) == "function" then return syn.request end
+    if http and type(http.request) == "function" then return http.request end
+    if fluxus and type(fluxus.request) == "function" then return fluxus.request end
+    return nil
+end
+
+local function decode(text)
+    local ok, value = pcall(function()
+        return HttpService:JSONDecode(tostring(text or "{}"))
+    end)
+    return ok and value or nil
+end
+
+local function encode(value)
+    return HttpService:UrlEncode(tostring(value or ""))
+end
+
+local function executorName()
+    local probes = {
+        function()
+            if identifyexecutor then
+                local name, version = identifyexecutor()
+                if name then
+                    return version and (tostring(name) .. " " .. tostring(version)) or tostring(name)
+                end
+            end
+        end,
+        function()
+            if getexecutorname then return tostring(getexecutorname()) end
+        end,
+        function()
+            if syn then return "Synapse-compatible" end
+        end,
+    }
+    for _, probe in ipairs(probes) do
+        local ok, value = pcall(probe)
+        if ok and value and tostring(value) ~= "" then
+            return tostring(value)
+        end
+    end
+    return "Unknown"
+end
+
+local function deviceIdentifier()
+    local probes = {
+        function() if gethwid then return "hwid:" .. tostring(gethwid()) end end,
+        function() if syn and syn.get_hwid then return "syn:" .. tostring(syn.get_hwid()) end end,
+        function()
+            return "rbxclient:" .. tostring(game:GetService("RbxAnalyticsService"):GetClientId())
+        end,
+    }
+    for _, probe in ipairs(probes) do
+        local ok, value = pcall(probe)
+        if ok and value and tostring(value) ~= "" then return tostring(value) end
+    end
+    return nil
+end
+
+local function readSavedKey()
+    local envKey = normalizeKey(ENV.PuckHubKey)
+    if envKey ~= "" then return envKey end
+
+    if type(isfile) == "function" and type(readfile) == "function" then
+        local okExists, exists = pcall(isfile, KEY_FILE)
+        if okExists and exists then
+            local okRead, value = pcall(readfile, KEY_FILE)
+            if okRead then return normalizeKey(value) end
+        end
+    end
+    return ""
+end
+
+local function saveKey(key)
+    key = normalizeKey(key)
+    if key == "" then return false end
+    ENV.PuckHubKey = key
+
+    if type(writefile) ~= "function" then return true end
+    if type(makefolder) == "function" then pcall(makefolder, "PuckHub") end
+    local ok = pcall(writefile, KEY_FILE, key)
+    return ok
+end
+
+local function clearSavedKey()
+    ENV.PuckHubKey = nil
+    if type(delfile) == "function" and type(isfile) == "function" then
+        local okExists, exists = pcall(isfile, KEY_FILE)
+        if okExists and exists then pcall(delfile, KEY_FILE) end
+    end
+end
+
+local function openOrCopy(url)
+    local opened = false
+    if type(openurl) == "function" then
+        opened = pcall(openurl, url)
+    elseif type(open_url) == "function" then
+        opened = pcall(open_url, url)
+    end
+
+    if not opened then
+        local okGui, GuiService = pcall(game.GetService, game, "GuiService")
+        if okGui and GuiService then
+            opened = pcall(function() GuiService:OpenBrowserWindow(url) end)
+        end
+    end
+
+    local copied = false
+    if type(setclipboard) == "function" then
+        copied = pcall(setclipboard, url)
+    elseif type(toclipboard) == "function" then
+        copied = pcall(toclipboard, url)
+    end
+
+    return opened, copied
+end
+
+local function fetchText(url)
+    local ok, body = pcall(function() return game:HttpGet(url) end)
+    if ok and type(body) == "string" and #body > 0 then
+        return true, body
+    end
+
+    local req = requestFn()
+    if req then
+        local requestOk, response = pcall(req, {Url = url, Method = "GET"})
+        if requestOk and type(response) == "table" then
+            local status = tonumber(response.StatusCode or response.Status or response.status) or 0
+            local responseBody = response.Body or response.body
+            if status >= 200 and status < 300 and type(responseBody) == "string" then
+                return true, responseBody
+            end
+        end
+    end
+
+    return false, tostring(body or "HTTP request failed")
+end
+
+local function launchSource(source, label)
+    local compile = compiler()
+    if type(compile) ~= "function" then
+        return false, "This executor does not provide loadstring/load."
+    end
+    local chunk, compileError = compile(source)
+    if not chunk then
+        return false, (label or "Script") .. " compile failed: " .. tostring(compileError)
+    end
+
+    local ok, runtimeError = pcall(chunk)
+    if not ok then
+        return false, (label or "Script") .. " failed: " .. tostring(runtimeError)
+    end
+    return true
+end
+
+local function launchFree(setStatus)
+    if setStatus then setStatus("Loading Free access…") end
+    ENV.PuckHubAccessMode = "free"
+
+    local ok, source = fetchText(FREE_LOADER)
+    if not ok then
+        if setStatus then setStatus("Could not download the Free loader.", true) end
+        return false
+    end
+
+    local launched, err = launchSource(source, "Free loader")
+    if not launched then
+        if setStatus then setStatus(err, true) end
+        return false
+    end
+    return true
+end
+
+local function buildResolveUrl(base)
+    local player = Players.LocalPlayer
+    return base .. "/resolve"
+        .. "?placeId=" .. encode(game.PlaceId)
+        .. "&universeId=" .. encode(game.GameId)
+        .. "&robloxUserId=" .. encode(player and player.UserId or "Unknown")
+        .. "&robloxUsername=" .. encode(player and player.Name or "Unknown")
+        .. "&executor=" .. encode(executorName())
+        .. "&jobId=" .. encode(game.JobId or "")
+end
+
+local function resolvePremium()
+    local urls = {
+        buildResolveUrl(PREMIUM_API),
+        buildResolveUrl(PREMIUM_API_FALLBACK),
+    }
+
+    local lastError = "Premium service is unavailable."
+    for _, url in ipairs(urls) do
+        local ok, body = fetchText(url)
+        if ok then
+            local data = decode(body)
+            if data then return true, data end
+            lastError = "Premium service returned an invalid response."
+        else
+            lastError = body
+        end
+    end
+    return false, lastError
+end
+
+local function postPremiumSource(base, payload)
+    local req = requestFn()
+    if type(req) ~= "function" then
+        return false, nil, "Premium access requires an executor HTTP request function."
+    end
+
+    local ok, response = pcall(req, {
+        Url = base .. "/source",
+        Method = "POST",
+        Headers = {
+            ["Content-Type"] = "application/json",
+            ["Accept"] = "text/plain, application/json",
+        },
+        Body = HttpService:JSONEncode(payload),
+    })
+
+    if not ok or type(response) ~= "table" then
+        return false, nil, tostring(response or "Premium request failed")
+    end
+
+    local status = tonumber(response.StatusCode or response.Status or response.status) or 0
+    local body = response.Body or response.body or ""
+    if status == 200 and type(body) == "string" and #body > 0 then
+        return true, body
+    end
+
+    local detail = decode(body)
+    local message = detail and (detail.message or detail.error or detail.code)
+    return false, status, tostring(message or ("HTTP " .. tostring(status)))
+end
+
+local premiumBusy = false
+local function launchPremium(key, setStatus)
+    if premiumBusy then return false end
+    premiumBusy = true
+
+    key = normalizeKey(key)
+    if key == "" then
+        premiumBusy = false
+        setStatus("Enter your PuckHub Premium key first.", true)
+        return false
+    end
+    if #key < 8 or #key > 256 then
+        premiumBusy = false
+        setStatus("That Premium key format does not look valid.", true)
+        return false
+    end
+
+    setStatus("Checking Premium support for this game…")
+    local resolveOk, info = resolvePremium()
+    if not resolveOk then
+        premiumBusy = false
+        setStatus("Could not reach the Premium service. Try again in a moment.", true)
+        return false
+    end
+
+    if not info.premium then
+        premiumBusy = false
+        local gameName = tostring(info.name or "this game")
+        setStatus("No Premium release is available for " .. gameName .. ". Use Free access instead.", true)
+        return false
+    end
+
+    local hwid = deviceIdentifier()
+    if not hwid then
+        premiumBusy = false
+        setStatus("Could not determine a stable device identifier for Premium validation.", true)
+        return false
+    end
+
+    local player = Players.LocalPlayer
+    local payload = {
+        key = key,
+        hwid = hwid,
+        slug = info.slug,
+        executor = executorName(),
+        script = info.name or info.slug,
+        placeId = tostring(game.PlaceId),
+        universeId = tostring(game.GameId),
+        jobId = tostring(game.JobId or ""),
+        robloxUserId = player and tostring(player.UserId) or "Unknown",
+        robloxUsername = player and tostring(player.Name) or "Unknown",
+    }
+
+    setStatus("Validating your PuckHub key…")
+    local okSource, source, reason = postPremiumSource(PREMIUM_API, payload)
+    if not okSource then
+        okSource, source, reason = postPremiumSource(PREMIUM_API_FALLBACK, payload)
+    end
+
+    if not okSource then
+        premiumBusy = false
+        setStatus("Premium key rejected: " .. tostring(reason or "validation failed"), true)
+        return false
+    end
+
+    setStatus("Key accepted. Launching Premium…")
+    ENV.PuckHubAccessMode = "premium"
+    ENV.PuckHubKey = key
+    saveKey(key)
+
+    local launched, runtimeError = launchSource(source, tostring(info.name or "Premium script"))
+    premiumBusy = false
+    if not launched then
+        setStatus(runtimeError, true)
+        return false
+    end
+
+    setStatus("Premium loaded successfully.")
+    return true
+end
+
+-- ============================================================================
+-- Classic PuckAFK access gate
+-- Uses the original loader visual language instead of PuckUI.
+-- ============================================================================
+
+local ACCESS_GUI_NAME = "PuckAFKAccessLoader"
+
+local THEME = {
+    Main = Color3.fromRGB(12, 12, 12),
+    Section = Color3.fromRGB(18, 18, 18),
+    Element = Color3.fromRGB(24, 24, 24),
+    ElementHover = Color3.fromRGB(32, 32, 32),
+    Border = Color3.fromRGB(45, 45, 45),
+    BorderDark = Color3.fromRGB(5, 5, 5),
+    Text = Color3.fromRGB(170, 170, 170),
+    DimText = Color3.fromRGB(100, 100, 100),
+    BrightText = Color3.fromRGB(230, 230, 230),
+    Accent = Color3.fromRGB(0, 95, 255),
+    Danger = Color3.fromRGB(180, 58, 64),
+    Success = Color3.fromRGB(48, 145, 78),
+}
+
+local function accessCreate(className, properties)
+    local object = Instance.new(className)
+    for key, value in pairs(properties or {}) do
+        object[key] = value
+    end
+    return object
+end
+
+local function accessTween(object, duration, properties, style, direction)
+    local animation = TweenService:Create(
+        object,
+        TweenInfo.new(
+            duration or 0.12,
+            style or Enum.EasingStyle.Quad,
+            direction or Enum.EasingDirection.Out
+        ),
+        properties
+    )
+    animation:Play()
+    return animation
+end
+
+local function accessLabel(parent, textValue, textSize, color, zIndex)
+    return accessCreate("TextLabel", {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Text = tostring(textValue or ""),
+        TextColor3 = color or THEME.Text,
+        TextSize = textSize or 12,
+        Font = Enum.Font.Code,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center,
+        ZIndex = zIndex or 10,
+        Parent = parent,
+    })
+end
+
+local function accessGuiParent(screenGui)
+    local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
+    local playerGui = player:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then
+        playerGui = player:WaitForChild("PlayerGui", 10)
+    end
+
+    if playerGui then
+        local ok = pcall(function()
+            screenGui.Parent = playerGui
+        end)
+        if ok and screenGui.Parent == playerGui then
+            return playerGui
+        end
+    end
+
+    if type(gethui) == "function" then
+        local ok, target = pcall(gethui)
+        if ok and target then
+            local parented = pcall(function()
+                screenGui.Parent = target
+            end)
+            if parented then return target end
+        end
+    end
+
+    local ok = pcall(function()
+        screenGui.Parent = CoreGui
+    end)
+    if ok then return CoreGui end
+    return nil
+end
+
+local function destroyOldAccessGui()
+    local parents = {CoreGui}
+    local player = Players.LocalPlayer
+    if player then
+        local playerGui = player:FindFirstChildOfClass("PlayerGui")
+        if playerGui then table.insert(parents, playerGui) end
+    end
+    if type(gethui) == "function" then
+        local ok, result = pcall(gethui)
+        if ok and result then table.insert(parents, result) end
+    end
+
+    for _, parent in ipairs(parents) do
+        pcall(function()
+            local old = parent:FindFirstChild(ACCESS_GUI_NAME)
+            if old then old:Destroy() end
+        end)
+    end
+end
+
+local function accessButton(parent, name, textValue, position, size, callback)
+    local button = accessCreate("TextButton", {
+        Name = name,
+        Position = position,
+        Size = size,
+        BackgroundColor3 = THEME.Element,
+        BorderColor3 = THEME.BorderDark,
+        BorderSizePixel = 1,
+        AutoButtonColor = false,
+        Font = Enum.Font.Code,
+        Text = tostring(textValue or "Button"),
+        TextColor3 = THEME.BrightText,
+        TextSize = 11,
+        ZIndex = 20,
+        Parent = parent,
+    })
+
+    accessCreate("Frame", {
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
+        BackgroundTransparency = 1,
+        BorderColor3 = THEME.Border,
+        BorderSizePixel = 1,
+        ZIndex = 21,
+        Parent = button,
+    })
+
+    button.MouseEnter:Connect(function()
+        accessTween(button, 0.08, {BackgroundColor3 = THEME.ElementHover})
+    end)
+    button.MouseLeave:Connect(function()
+        accessTween(button, 0.08, {BackgroundColor3 = THEME.Element})
+    end)
+    button.MouseButton1Click:Connect(function()
+        if callback then callback() end
+    end)
+    return button
+end
+
+local function runAccessGate(openPremiumImmediately)
+    destroyOldAccessGui()
+
+    local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+    local phoneLayout = UserInputService.TouchEnabled and math.min(viewport.X, viewport.Y) <= 720
+    local windowWidth = phoneLayout and 350 or 480
+    local chooserHeight = phoneLayout and 320 or 300
+    local premiumHeight = phoneLayout and 430 or 405
+    local currentHeight = chooserHeight
+    local cancelled = false
+    local busy = false
+
+    local fitScale = math.min(
+        (viewport.X - 16) / math.max(windowWidth, 1),
+        (viewport.Y - 16) / math.max(premiumHeight, 1)
+    )
+    local uiScaleValue = math.max(0.70, math.min(1, fitScale))
+
+    local gui = accessCreate("ScreenGui", {
+        Name = ACCESS_GUI_NAME,
+        ResetOnSpawn = false,
+        IgnoreGuiInset = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        DisplayOrder = 10001,
+    })
+    accessGuiParent(gui)
+
+    local shadow = accessCreate("Frame", {
+        Name = "Shadow",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 4, 0.5, 4),
+        Size = UDim2.fromOffset(windowWidth, currentHeight),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = 0.5,
+        BorderSizePixel = 0,
+        ZIndex = 1,
+        Parent = gui,
+    })
+
+    local card = accessCreate("CanvasGroup", {
+        Name = "LoaderCard",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.fromOffset(windowWidth, currentHeight),
+        BackgroundColor3 = THEME.Main,
+        BorderColor3 = THEME.BorderDark,
+        BorderSizePixel = 1,
+        GroupTransparency = 1,
+        Active = true,
+        ZIndex = 2,
+        Parent = gui,
+    })
+
+    accessCreate("UIScale", {Scale = uiScaleValue, Parent = card})
+    accessCreate("UIScale", {Scale = uiScaleValue, Parent = shadow})
+
+    -- Same subtle procedural rose / damask motif used by the classic loader.
+    local roseBackground = accessCreate("CanvasGroup", {
+        Name = "RoseBackground",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        GroupTransparency = 0.78,
+        ZIndex = 3,
+        Parent = card,
+    })
+
+    local roseColor = Color3.fromRGB(255, 255, 255)
+    local function softPart(parent, position, anchor, size, rotation, transparency)
+        local part = accessCreate("Frame", {
+            AnchorPoint = anchor or Vector2.new(0.5, 0.5),
+            Position = position,
+            Size = size,
+            Rotation = rotation or 0,
+            BackgroundColor3 = roseColor,
+            BackgroundTransparency = transparency or 0.84,
+            BorderSizePixel = 0,
+            ZIndex = 3,
+            Parent = parent,
+        })
+        accessCreate("UICorner", {CornerRadius = UDim.new(1, 0), Parent = part})
+        return part
+    end
+
+    local function createRose(x, y, scale, tilt)
+        local motif = accessCreate("Frame", {
+            Position = UDim2.fromOffset(x - 36, y - 36),
+            Size = UDim2.fromOffset(72, 72),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Rotation = tilt or 0,
+            ZIndex = 3,
+            Parent = roseBackground,
+        })
+        local center = UDim2.fromScale(0.5, 0.43)
+        for index = 0, 5 do
+            softPart(motif, center, Vector2.new(0.5, 0.92), UDim2.fromOffset(math.max(6, math.floor(13 * scale)), math.max(12, math.floor(24 * scale))), index * 60, 0.78)
+        end
+        for index = 0, 4 do
+            softPart(motif, center, Vector2.new(0.5, 0.90), UDim2.fromOffset(math.max(4, math.floor(9 * scale)), math.max(8, math.floor(16 * scale))), index * 72 + 36, 0.72)
+        end
+        softPart(motif, center, Vector2.new(0.5, 0.5), UDim2.fromOffset(4, 4), 0, 0.62)
+        softPart(motif, UDim2.new(0.5, -5, 0.68, 0), Vector2.new(1, 0.5), UDim2.fromOffset(17, 4), -32, 0.80)
+        softPart(motif, UDim2.new(0.5, 5, 0.71, 0), Vector2.new(0, 0.5), UDim2.fromOffset(17, 4), 32, 0.80)
+        local stem = accessCreate("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0),
+            Position = UDim2.new(0.5, 0, 0.60, 0),
+            Size = UDim2.fromOffset(1, 24),
+            BackgroundColor3 = roseColor,
+            BackgroundTransparency = 0.78,
+            BorderSizePixel = 0,
+            ZIndex = 2,
+            Parent = motif,
+        })
+        accessCreate("UIGradient", {
+            Rotation = 90,
+            Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.12),
+                NumberSequenceKeypoint.new(1, 1),
+            }),
+            Parent = stem,
+        })
+    end
+
+    createRose(74, 112, 0.68, -7)
+    createRose(220, 176, 0.60, 7)
+    createRose(385, 105, 0.64, -5)
+    createRose(448, 265, 0.52, 8)
+
+    accessCreate("Frame", {
+        Name = "InnerBorder",
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
+        BackgroundTransparency = 1,
+        BorderColor3 = THEME.Border,
+        BorderSizePixel = 1,
+        ZIndex = 4,
+        Parent = card,
+    })
+
+    local titleBar = accessCreate("Frame", {
+        Name = "TitleBar",
+        Position = UDim2.fromOffset(2, 2),
+        Size = UDim2.new(1, -4, 0, 24),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 8,
+        Parent = card,
+    })
+
+    local titleLabel = accessLabel(titleBar, "PuckAFK Hub", 13, THEME.BrightText, 11)
+    titleLabel.Position = UDim2.fromOffset(6, 0)
+    titleLabel.Size = UDim2.new(1, -92, 1, 0)
+
+    local closeButton = accessCreate("TextButton", {
+        Name = "Close",
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -2, 0, 2),
+        Size = UDim2.fromOffset(18, 19),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Font = Enum.Font.Code,
+        Text = "x",
+        TextSize = 12,
+        TextColor3 = THEME.DimText,
+        ZIndex = 15,
+        Parent = titleBar,
+    })
+    closeButton.MouseEnter:Connect(function() accessTween(closeButton, 0.08, {TextColor3 = THEME.BrightText}) end)
+    closeButton.MouseLeave:Connect(function() accessTween(closeButton, 0.08, {TextColor3 = THEME.DimText}) end)
+    closeButton.MouseButton1Click:Connect(function()
+        cancelled = true
+        pcall(function() gui:Destroy() end)
+    end)
+
+    local dragHandle = accessCreate("TextButton", {
+        Name = "DragHandle",
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.new(1, -42, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Text = "",
+        Active = true,
+        ZIndex = 14,
+        Parent = titleBar,
+    })
+
+    local dragging = false
+    local dragStart
+    local startPosition
+    dragHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPosition = card.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging or not dragStart or not startPosition then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Position - dragStart
+            card.Position = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + delta.X, startPosition.Y.Scale, startPosition.Y.Offset + delta.Y)
+            shadow.Position = UDim2.new(card.Position.X.Scale, card.Position.X.Offset + 4, card.Position.Y.Scale, card.Position.Y.Offset + 4)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+    end)
+
+    local accentTop = accessCreate("Frame", {
+        Name = "AccentTop",
+        Position = UDim2.fromOffset(2, 26),
+        Size = UDim2.new(1, -4, 0, 1),
+        BackgroundColor3 = THEME.Accent,
+        BorderSizePixel = 0,
+        ZIndex = 9,
+        Parent = card,
+    })
+
+    local contentHost = accessCreate("Frame", {
+        Name = "ContentHost",
+        Position = UDim2.fromOffset(phoneLayout and 14 or 24, 48),
+        Size = UDim2.new(1, phoneLayout and -28 or -48, 1, -64),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        ZIndex = 6,
+        Parent = card,
+    })
+
+    local chooser = accessCreate("Frame", {
+        Name = "Chooser",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = THEME.Section,
+        BorderColor3 = THEME.Border,
+        BorderSizePixel = 1,
+        ZIndex = 7,
+        Parent = contentHost,
+    })
+    accessCreate("Frame", {
+        Position = UDim2.fromOffset(1, 1), Size = UDim2.new(1, -2, 1, -2),
+        BackgroundTransparency = 1, BorderColor3 = THEME.BorderDark, BorderSizePixel = 1,
+        ZIndex = 8, Parent = chooser,
+    })
+
+    local premium = accessCreate("Frame", {
+        Name = "Premium",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = THEME.Section,
+        BorderColor3 = THEME.Border,
+        BorderSizePixel = 1,
+        Visible = false,
+        ZIndex = 7,
+        Parent = contentHost,
+    })
+    accessCreate("Frame", {
+        Position = UDim2.fromOffset(1, 1), Size = UDim2.new(1, -2, 1, -2),
+        BackgroundTransparency = 1, BorderColor3 = THEME.BorderDark, BorderSizePixel = 1,
+        ZIndex = 8, Parent = premium,
+    })
+
+    local chooserTitle = accessLabel(chooser, "Choose PuckHub Access", 13, THEME.BrightText, 12)
+    chooserTitle.Position = UDim2.fromOffset(14, 14)
+    chooserTitle.Size = UDim2.new(1, -28, 0, 22)
+    chooserTitle.TextXAlignment = Enum.TextXAlignment.Center
+
+    local chooserDetail = accessLabel(chooser, "Use the normal free hub or unlock Premium with your key.", 10, THEME.DimText, 12)
+    chooserDetail.Position = UDim2.fromOffset(14, 38)
+    chooserDetail.Size = UDim2.new(1, -28, 0, 18)
+    chooserDetail.TextXAlignment = Enum.TextXAlignment.Center
+    chooserDetail.TextTruncate = Enum.TextTruncate.AtEnd
+
+    local chooserStatus = accessLabel(chooser, "Ready", 9, THEME.DimText, 12)
+    chooserStatus.AnchorPoint = Vector2.new(0.5, 1)
+    chooserStatus.Position = UDim2.new(0.5, 0, 1, -10)
+    chooserStatus.Size = UDim2.new(1, -28, 0, 16)
+    chooserStatus.TextXAlignment = Enum.TextXAlignment.Center
+
+    local freeY = 72
+    local premiumY = 130
+    if phoneLayout then
+        freeY = 70
+        premiumY = 132
+    end
+
+    local function setChooserStatus(textValue, isError, success)
+        if not chooserStatus.Parent then return end
+        chooserStatus.Text = tostring(textValue or "")
+        chooserStatus.TextColor3 = isError and THEME.Danger or (success and THEME.Success or THEME.DimText)
+    end
+
+    accessButton(chooser, "FreeAccess", "FREE ACCESS", UDim2.new(0, 14, 0, freeY), UDim2.new(1, -28, 0, 42), function()
+        if busy or cancelled then return end
+        busy = true
+        setChooserStatus("Loading Free access...")
+        accentTop.BackgroundColor3 = THEME.Accent
+        task.spawn(function()
+            local ok = launchFree(function(textValue, isError)
+                setChooserStatus(textValue, isError, not isError)
+            end)
+            busy = false
+            if ok and not cancelled then
+                setChooserStatus("Free access started.", false, true)
+                task.wait(0.12)
+                pcall(function() gui:Destroy() end)
+            end
+        end)
+    end)
+
+    local freeInfo = accessLabel(chooser, "No key required  •  normal public PuckAFK scripts", 9, THEME.DimText, 12)
+    freeInfo.Position = UDim2.fromOffset(14, freeY + 43)
+    freeInfo.Size = UDim2.new(1, -28, 0, 14)
+    freeInfo.TextXAlignment = Enum.TextXAlignment.Center
+
+    local premiumButton
+    premiumButton = accessButton(chooser, "PremiumAccess", "PREMIUM ACCESS", UDim2.new(0, 14, 0, premiumY), UDim2.new(1, -28, 0, 42), function()
+        if busy or cancelled then return end
+        chooser.Visible = false
+        premium.Visible = true
+        titleLabel.Text = "PuckAFK Hub | Premium"
+        currentHeight = premiumHeight
+        accessTween(card, 0.16, {Size = UDim2.fromOffset(windowWidth, currentHeight)})
+        accessTween(shadow, 0.16, {Size = UDim2.fromOffset(windowWidth, currentHeight)})
+    end)
+
+    local premiumInfo = accessLabel(chooser, "Validate your paid PuckHub key before Premium source delivery", 9, THEME.DimText, 12)
+    premiumInfo.Position = UDim2.fromOffset(14, premiumY + 43)
+    premiumInfo.Size = UDim2.new(1, -28, 0, 14)
+    premiumInfo.TextXAlignment = Enum.TextXAlignment.Center
+
+    local premiumTitle = accessLabel(premium, "Premium Access", 13, THEME.BrightText, 12)
+    premiumTitle.Position = UDim2.fromOffset(14, 12)
+    premiumTitle.Size = UDim2.new(1, -28, 0, 22)
+    premiumTitle.TextXAlignment = Enum.TextXAlignment.Center
+
+    local premiumDetail = accessLabel(premium, "Enter the key from PuckAFK Discord, then validate and launch.", 10, THEME.DimText, 12)
+    premiumDetail.Position = UDim2.fromOffset(14, 34)
+    premiumDetail.Size = UDim2.new(1, -28, 0, 18)
+    premiumDetail.TextXAlignment = Enum.TextXAlignment.Center
+    premiumDetail.TextTruncate = Enum.TextTruncate.AtEnd
+
+    local savedKey = readSavedKey()
+    local keyBox = accessCreate("TextBox", {
+        Name = "PremiumKey",
+        Position = UDim2.fromOffset(14, 66),
+        Size = UDim2.new(1, -28, 0, 34),
+        BackgroundColor3 = THEME.Element,
+        BorderColor3 = THEME.BorderDark,
+        BorderSizePixel = 1,
+        ClearTextOnFocus = false,
+        Font = Enum.Font.Code,
+        Text = savedKey,
+        PlaceholderText = "PH-XXXXX-XXXXX-XXXXX-XXXXX",
+        PlaceholderColor3 = THEME.DimText,
+        TextColor3 = THEME.BrightText,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 20,
+        Parent = premium,
+    })
+    accessCreate("UIPadding", {
+        PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 10),
+        Parent = keyBox,
+    })
+    accessCreate("Frame", {
+        Position = UDim2.fromOffset(1, 1), Size = UDim2.new(1, -2, 1, -2),
+        BackgroundTransparency = 1, BorderColor3 = THEME.Border, BorderSizePixel = 1,
+        ZIndex = 21, Parent = keyBox,
+    })
+
+    local premiumStatus = accessLabel(premium, savedKey ~= "" and "Saved Premium key detected." or "No saved Premium key.", 9, THEME.DimText, 12)
+    premiumStatus.Position = UDim2.fromOffset(14, 104)
+    premiumStatus.Size = UDim2.new(1, -28, 0, 18)
+    premiumStatus.TextXAlignment = Enum.TextXAlignment.Center
+    premiumStatus.TextTruncate = Enum.TextTruncate.AtEnd
+
+    local function setPremiumStatus(textValue, isError, success)
+        if not premiumStatus.Parent then return end
+        premiumStatus.Text = tostring(textValue or "")
+        premiumStatus.TextColor3 = isError and THEME.Danger or (success and THEME.Success or THEME.DimText)
+        accentTop.BackgroundColor3 = isError and THEME.Danger or (success and THEME.Success or THEME.Accent)
+    end
+
+    local buttonGap = 8
+    local buttonWidth = math.floor((windowWidth - (phoneLayout and 56 or 76) - buttonGap) / 2)
+    accessButton(premium, "JoinDiscord", "JOIN DISCORD", UDim2.fromOffset(14, 132), UDim2.fromOffset(buttonWidth, 32), function()
+        if busy then return end
+        local opened, copied = openOrCopy(DISCORD_INVITE)
+        if opened and copied then setPremiumStatus("Discord opened and invite copied.")
+        elseif opened then setPremiumStatus("Discord invite opened.")
+        elseif copied then setPremiumStatus("Discord invite copied.")
+        else setPremiumStatus("discord.gg/NFfs8G2WAz") end
+    end)
+
+    accessButton(premium, "PremiumPage", "PREMIUM PAGE", UDim2.fromOffset(14 + buttonWidth + buttonGap, 132), UDim2.fromOffset(buttonWidth, 32), function()
+        if busy then return end
+        local opened, copied = openOrCopy(PREMIUM_PAGE)
+        if opened then setPremiumStatus("Premium page opened.")
+        elseif copied then setPremiumStatus("Premium page link copied.")
+        else setPremiumStatus(PREMIUM_PAGE) end
+    end)
+
+    accessButton(premium, "Validate", "VALIDATE & LAUNCH PREMIUM", UDim2.new(0, 14, 0, 176), UDim2.new(1, -28, 0, 40), function()
+        if busy or cancelled then return end
+        local key = normalizeKey(keyBox.Text)
+        if key == "" then key = readSavedKey() end
+        busy = true
+        task.spawn(function()
+            local launched = launchPremium(key, function(textValue, isError)
+                setPremiumStatus(textValue, isError, false)
+            end)
+            busy = false
+            if launched and not cancelled then
+                setPremiumStatus("Premium loaded successfully.", false, true)
+                task.wait(0.20)
+                pcall(function() gui:Destroy() end)
+            end
+        end)
+    end)
+
+    accessButton(premium, "ForgetKey", "FORGET SAVED KEY", UDim2.new(0, 14, 0, 226), UDim2.new(0.5, -18, 0, 30), function()
+        if busy then return end
+        clearSavedKey()
+        keyBox.Text = ""
+        setPremiumStatus("Saved Premium key removed.")
+    end)
+
+    accessButton(premium, "Back", "BACK TO ACCESS", UDim2.new(0.5, 4, 0, 226), UDim2.new(0.5, -18, 0, 30), function()
+        if busy then return end
+        premium.Visible = false
+        chooser.Visible = true
+        titleLabel.Text = "PuckAFK Hub"
+        currentHeight = chooserHeight
+        accentTop.BackgroundColor3 = THEME.Accent
+        accessTween(card, 0.16, {Size = UDim2.fromOffset(windowWidth, currentHeight)})
+        accessTween(shadow, 0.16, {Size = UDim2.fromOffset(windowWidth, currentHeight)})
+    end)
+
+    local securityLabel = accessLabel(premium, "Key validation: PuckAFK server  •  source delivered only after success", 9, THEME.DimText, 12)
+    securityLabel.Position = UDim2.fromOffset(14, 267)
+    securityLabel.Size = UDim2.new(1, -28, 0, 16)
+    securityLabel.TextXAlignment = Enum.TextXAlignment.Center
+    securityLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+    if phoneLayout then
+        securityLabel.Position = UDim2.fromOffset(14, 273)
+    end
+
+    card.Size = UDim2.fromOffset(windowWidth, currentHeight - 8)
+    shadow.Size = UDim2.fromOffset(windowWidth, currentHeight - 8)
+    accessTween(card, 0.18, {GroupTransparency = 0, Size = UDim2.fromOffset(windowWidth, currentHeight)})
+    accessTween(shadow, 0.18, {Size = UDim2.fromOffset(windowWidth, currentHeight)})
+
+    if openPremiumImmediately then
+        chooser.Visible = false
+        premium.Visible = true
+        titleLabel.Text = "PuckAFK Hub | Premium"
+        currentHeight = premiumHeight
+        card.Size = UDim2.fromOffset(windowWidth, premiumHeight)
+        shadow.Size = UDim2.fromOffset(windowWidth, premiumHeight)
+    end
+end
+
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+-- Explicit mode is useful for the Premium purchase page and power users.
+-- The normal homepage loader does not set a mode, so users get the classic chooser.
+local requestedMode = string.lower(trim(ENV.PuckHubAccessMode))
+if requestedMode == "free" then
+    return launchFree()
+elseif requestedMode == "premium" then
+    local key = readSavedKey()
+    if key ~= "" then
+        local silentStatus = function(textValue, isError)
+            if isError then warn("[PuckAFK Hub] " .. tostring(textValue)) else print("[PuckAFK Hub] " .. tostring(textValue)) end
+        end
+        if launchPremium(key, silentStatus) then return end
+    end
+end
+
+return runAccessGate(requestedMode == "premium")
