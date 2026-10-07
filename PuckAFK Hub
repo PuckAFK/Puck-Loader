@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.7 - Classic UI + High Identity Link Bridge
+    PuckAFK Hub | Universal Access Loader v5.8 - Classic UI + Clipboard Links
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -32,7 +32,6 @@ local FREE_LOADER = "https://puckafk.site/loader-free.lua"
 local PREMIUM_API = "https://puckafk.site/api/premium"
 local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/premium"
 local DISCORD_INVITE = "https://discord.gg/NFfs8G2WAz"
-local DISCORD_APP_INVITE = "discord://-/invite/NFfs8G2WAz"
 local PREMIUM_PAGE = "https://puckafk.site/premium/"
 local KEY_FILE = "PuckHub/premium.key"
 local CHOICE_FILE = "PuckHub/access-choice.txt"
@@ -180,392 +179,84 @@ local function clearSavedKey()
     end
 end
 
-local function openWebsite(url, alternateUrl)
-    url = trim(url)
-    alternateUrl = trim(alternateUrl)
-    if url == "" then return false, "empty-url" end
+local function copyToClipboard(value)
+    value = trim(value)
+    if value == "" then return false, "empty-value" end
 
-    local detectedExecutor = string.lower(executorName())
-    local function isExecutor(...)
-        for i = 1, select("#", ...) do
-            local token = string.lower(tostring(select(i, ...)))
-            if token ~= "" and string.find(detectedExecutor, token, 1, true) then
-                return true
-            end
-        end
-        return false
-    end
-
-    local openerNames = {
-        "openurl", "open_url", "openUrl", "OpenUrl", "OpenURL",
-        "openlink", "open_link", "openLink", "OpenLink", "OpenLINK",
-        "launchurl", "launch_url", "launchUrl", "LaunchUrl", "LaunchURL",
-        "openbrowser", "open_browser", "openBrowser", "OpenBrowser",
-        "openbrowserwindow", "open_browser_window", "openBrowserWindow", "OpenBrowserWindow",
-        "openexternal", "open_external", "openExternal", "OpenExternal",
-        "openexternalurl", "open_external_url", "openExternalUrl", "OpenExternalUrl", "OpenExternalURL",
-        "openwebsite", "open_website", "openWebsite", "OpenWebsite",
-        "openweb", "open_web", "openWeb", "OpenWeb",
-        "openuri", "open_uri", "openUri", "OpenUri", "OpenURI",
-        "browse", "browseurl", "browse_url", "browseUrl", "BrowseUrl", "BrowseURL",
-        "browser_open", "browseropen", "openinbrowser", "open_in_browser", "openInBrowser", "OpenInBrowser",
-        "visiturl", "visit_url", "visitUrl", "VisitUrl", "VisitURL",
-        "shellopen", "shell_open", "shellOpen", "ShellOpen",
-        "starturl", "start_url", "startUrl", "StartUrl", "StartURL",
-        "navigate", "navigateurl", "navigate_url", "navigateUrl", "NavigateUrl", "NavigateURL",
+    local directNames = {
+        "setclipboard", "toclipboard", "set_clipboard", "to_clipboard",
+        "writeclipboard", "write_clipboard", "copyclipboard", "copy_clipboard",
+        "setrbxclipboard", "set_rbx_clipboard",
     }
 
-    local openerSet = {}
-    for _, name in ipairs(openerNames) do openerSet[name] = true end
+    local tried = {}
+    local function tryFunction(fn, owner, label)
+        if type(fn) ~= "function" or tried[fn] then return false end
+        tried[fn] = true
 
-    local tables = {}
-    local seenTables = {}
-    local function addTable(value, label)
-        if type(value) == "table" and not seenTables[value] then
-            seenTables[value] = true
-            table.insert(tables, {value = value, label = label})
-        end
-    end
-
-    addTable(ENV, "executor")
-    addTable(_G, "_G")
-    for _, rootName in ipairs({
-        "syn", "Synapse", "synapse", "synapsez", "synapse_z", "SynapseZ",
-        "delta", "Delta",
-        "real", "Real",
-        "madium", "Madium",
-        "potassium", "Potassium",
-        "xeno", "Xeno",
-        "nexomia", "Nexomia",
-        "solara", "Solara",
-        "fluxus", "krnl", "executor", "wave", "swift",
-    }) do
-        local okRoot, root = pcall(function() return rawget(ENV, rootName) end)
-        if okRoot then addTable(root, rootName) end
-        local okGlobal, globalRoot = pcall(function() return rawget(_G, rootName) end)
-        if okGlobal then addTable(globalRoot, "_G." .. rootName) end
-    end
-
-    local nestedNames = {
-        "browser", "Browser", "web", "Web", "url", "Url", "URL",
-        "links", "Links", "link", "Link",
-        "external", "External", "launcher", "Launcher",
-        "platform", "Platform", "system", "System",
-        "shell", "Shell", "bridge", "Bridge",
-        "utils", "Utils", "utility", "Utility",
-        "api", "API", "client", "Client", "functions", "Functions",
-        "misc", "Misc", "miscellaneous", "Miscellaneous",
-    }
-
-    local function expandNested()
-        local index = 1
-        while index <= #tables do
-            local base = tables[index]
-            for _, nestedName in ipairs(nestedNames) do
-                local okNested, nested = pcall(function() return rawget(base.value, nestedName) end)
-                if okNested and type(nested) == "table" then
-                    addTable(nested, base.label .. "." .. nestedName)
-                end
-            end
-            index = index + 1
-            if index > 96 then break end
-        end
-    end
-    expandNested()
-
-    if type(getrenv) == "function" then
-        local ok, renv = pcall(getrenv)
-        if ok then addTable(renv, "getrenv") end
-    end
-    if type(getfenv) == "function" then
-        local ok, fenv = pcall(getfenv, 0)
-        if ok then addTable(fenv, "getfenv") end
-    end
-    expandNested()
-
-    local urls = {url}
-    if alternateUrl ~= "" and alternateUrl ~= url then
-        table.insert(urls, alternateUrl)
-    end
-
-    local seenFns = {}
-    local function tryFunction(fn, owner, ownerLabel, fnName, target)
-        if type(fn) ~= "function" or seenFns[fn] then return false end
-        seenFns[fn] = true
-
-        local ok, result = pcall(fn, target)
-        if ok and result ~= false then
-            return true, ownerLabel .. "." .. fnName
-        end
+        local ok = pcall(fn, value)
+        if ok then return true, label end
 
         if owner then
-            ok, result = pcall(fn, owner, target)
-            if ok and result ~= false then
-                return true, ownerLabel .. ":" .. fnName
-            end
+            ok = pcall(fn, owner, value)
+            if ok then return true, label .. "(method)" end
         end
-
-        ok, result = pcall(fn, {Url = target, URL = target, url = target, Link = target, link = target})
-        if ok and result ~= false then
-            return true, ownerLabel .. "." .. fnName .. "(payload)"
-        end
-
-        ok, result = pcall(fn, "open", target)
-        if ok and result ~= false then
-            return true, ownerLabel .. "." .. fnName .. "(open,url)"
-        end
-
         return false
     end
 
-    for _, target in ipairs(urls) do
-        local synTable = rawget(ENV, "syn") or rawget(_G, "syn")
-        if type(synTable) == "table" then
-            for _, name in ipairs({"open_url", "openurl", "open_link", "openlink"}) do
-                local okRead, fn = pcall(function() return rawget(synTable, name) end)
+    for _, name in ipairs(directNames) do
+        local fn = rawget(ENV, name) or rawget(_G, name)
+        local ok, via = tryFunction(fn, nil, name)
+        if ok then return true, via end
+    end
+
+    local roots = {
+        {rawget(ENV, "clipboard"), "clipboard"},
+        {rawget(ENV, "Clipboard"), "Clipboard"},
+        {rawget(ENV, "syn"), "syn"},
+        {rawget(ENV, "executor"), "executor"},
+        {rawget(ENV, "real"), "real"},
+        {rawget(ENV, "Real"), "Real"},
+        {rawget(ENV, "delta"), "delta"},
+        {rawget(ENV, "Delta"), "Delta"},
+        {rawget(ENV, "xeno"), "xeno"},
+        {rawget(ENV, "Xeno"), "Xeno"},
+        {rawget(ENV, "solara"), "solara"},
+        {rawget(ENV, "Solara"), "Solara"},
+        {rawget(ENV, "potassium"), "potassium"},
+        {rawget(ENV, "Potassium"), "Potassium"},
+    }
+
+    local nestedNames = {
+        "clipboard", "Clipboard", "system", "System", "platform", "Platform",
+        "utils", "Utils", "utility", "Utility", "api", "API",
+    }
+    local seenRoots = {}
+    local i = 1
+    while i <= #roots and i <= 64 do
+        local root, label = roots[i][1], roots[i][2]
+        if type(root) == "table" and not seenRoots[root] then
+            seenRoots[root] = true
+
+            for _, name in ipairs({"set", "write", "copy", "setclipboard", "toclipboard", "set_clipboard", "writeclipboard"}) do
+                local okRead, fn = pcall(function() return rawget(root, name) end)
                 if okRead then
-                    local okOpen, via = tryFunction(fn, synTable, "syn", name, target)
-                    if okOpen then return true, via end
+                    local ok, via = tryFunction(fn, root, label .. "." .. name)
+                    if ok then return true, via end
+                end
+            end
+
+            for _, nestedName in ipairs(nestedNames) do
+                local okNested, nested = pcall(function() return rawget(root, nestedName) end)
+                if okNested and type(nested) == "table" and not seenRoots[nested] then
+                    table.insert(roots, {nested, label .. "." .. nestedName})
                 end
             end
         end
-
-        local priorityRoots = {}
-        if isExecutor("delta") then priorityRoots = {"delta", "Delta"}
-        elseif isExecutor("synapse z", "synapsez") then priorityRoots = {"syn", "synapsez", "synapse_z", "SynapseZ"}
-        elseif isExecutor("madium") then priorityRoots = {"madium", "Madium"}
-        elseif isExecutor("potassium") then priorityRoots = {"potassium", "Potassium"}
-        elseif isExecutor("xeno") then priorityRoots = {"xeno", "Xeno"}
-        elseif isExecutor("nexomia") then priorityRoots = {"nexomia", "Nexomia"}
-        elseif isExecutor("solara") then priorityRoots = {"solara", "Solara"}
-        elseif isExecutor("real") then priorityRoots = {"real", "Real"}
-        end
-
-        for _, rootName in ipairs(priorityRoots) do
-            local root = rawget(ENV, rootName) or rawget(_G, rootName)
-            if type(root) == "table" then
-                for _, name in ipairs(openerNames) do
-                    local okRead, fn = pcall(function() return rawget(root, name) end)
-                    if okRead then
-                        local okOpen, via = tryFunction(fn, root, rootName, name, target)
-                        if okOpen then return true, via end
-                    end
-                end
-            end
-        end
-
-        for _, entry in ipairs(tables) do
-            local tbl = entry.value
-            for _, name in ipairs(openerNames) do
-                local okRead, fn = pcall(function() return rawget(tbl, name) end)
-                if okRead then
-                    local okOpen, via = tryFunction(fn, tbl, entry.label, name, target)
-                    if okOpen then return true, via end
-                end
-            end
-        end
-
-        for key, value in pairs(ENV) do
-            if openerSet[tostring(key)] and type(value) == "function" then
-                local okOpen, via = tryFunction(value, nil, "getgenv", tostring(key), target)
-                if okOpen then return true, via end
-            end
-        end
+        i = i + 1
     end
 
-    local function maybeClone(instance)
-        if not instance then return nil end
-        local cloneRef = rawget(ENV, "cloneref") or rawget(_G, "cloneref")
-        if type(cloneRef) == "function" then
-            local cloneOk, cloned = pcall(cloneRef, instance)
-            if cloneOk and cloned then return cloned end
-        end
-        return instance
-    end
-
-    local gameRoots = {{value = game, label = "game"}}
-    if type(getrenv) == "function" then
-        local okRenv, renv = pcall(getrenv)
-        if okRenv and type(renv) == "table" then
-            local realGame = rawget(renv, "game")
-            if realGame and realGame ~= game then
-                table.insert(gameRoots, 1, {value = realGame, label = "getrenv().game"})
-            end
-        end
-    end
-
-    local function getServiceFrom(root, name)
-        if not root then return nil end
-        local ok, service = pcall(function()
-            local getter = root.GetService
-            return getter(root, name)
-        end)
-        if not ok or not service then return nil end
-        return maybeClone(service)
-    end
-
-    local function getIdentityFunctions()
-        local getterNames = {
-            "getthreadidentity", "get_thread_identity", "getidentity",
-            "getthreadcontext", "get_thread_context", "getthreadcaps",
-        }
-        local setterNames = {
-            "setthreadidentity", "set_thread_identity", "setidentity",
-            "setthreadcontext", "set_thread_context", "setthreadcaps",
-        }
-        local getter, setter, getterName, setterName
-        for _, name in ipairs(getterNames) do
-            local fn = rawget(ENV, name) or rawget(_G, name)
-            if type(fn) == "function" then
-                getter, getterName = fn, name
-                break
-            end
-        end
-        for _, name in ipairs(setterNames) do
-            local fn = rawget(ENV, name) or rawget(_G, name)
-            if type(fn) == "function" then
-                setter, setterName = fn, name
-                break
-            end
-        end
-        return getter, setter, getterName, setterName
-    end
-
-    local function tryProtectedServices(target, rootEntry, prefix)
-        local root = rootEntry.value
-        local rootLabel = rootEntry.label
-
-        local linking = getServiceFrom(root, "LinkingService")
-        if linking then
-            local ok, result = pcall(function()
-                local fn = linking.OpenUrl
-                return fn(linking, target)
-            end)
-            if ok and result == true then
-                return true, prefix .. rootLabel .. ".LinkingService.OpenUrl"
-            end
-            ok, result = pcall(function() return linking:OpenUrl(target) end)
-            if ok and result == true then
-                return true, prefix .. rootLabel .. ".LinkingService:OpenUrl"
-            end
-        end
-
-        local guiService = getServiceFrom(root, "GuiService")
-        if guiService then
-            local ok = pcall(function()
-                local fn = guiService.OpenBrowserWindow
-                return fn(guiService, target)
-            end)
-            if ok then return true, prefix .. rootLabel .. ".GuiService.OpenBrowserWindow" end
-
-            ok = pcall(function()
-                local fn = guiService.OpenNativeOverlay
-                return fn(guiService, "PuckAFK", target)
-            end)
-            if ok then return true, prefix .. rootLabel .. ".GuiService.OpenNativeOverlay" end
-        end
-
-        local browserService = getServiceFrom(root, "BrowserService")
-        if browserService then
-            local ok = pcall(function()
-                local fn = browserService.OpenBrowserWindow
-                return fn(browserService, target)
-            end)
-            if ok then return true, prefix .. rootLabel .. ".BrowserService.OpenBrowserWindow" end
-
-            ok = pcall(function()
-                local fn = browserService.OpenNativeOverlay
-                return fn(browserService, "PuckAFK", target)
-            end)
-            if ok then return true, prefix .. rootLabel .. ".BrowserService.OpenNativeOverlay" end
-        end
-
-        return false
-    end
-
-    for _, target in ipairs(urls) do
-        for _, rootEntry in ipairs(gameRoots) do
-            local okOpen, via = tryProtectedServices(target, rootEntry, "")
-            if okOpen then return true, via end
-        end
-    end
-
-    local getIdentity, setIdentity, getIdentityName, setIdentityName = getIdentityFunctions()
-    if getIdentity and setIdentity then
-        local oldIdentity
-        local gotOldIdentity = pcall(function() oldIdentity = getIdentity() end)
-
-        local identityOrder = {8, 12, 7, 6, 5, 3}
-        local seenIdentity = {}
-        for _, identity in ipairs(identityOrder) do
-            if not seenIdentity[identity] then
-                seenIdentity[identity] = true
-                local raised = pcall(setIdentity, identity)
-                if raised then
-                    for _, target in ipairs(urls) do
-                        for _, rootEntry in ipairs(gameRoots) do
-                            local okOpen, via = tryProtectedServices(
-                                target,
-                                rootEntry,
-                                "identity-" .. tostring(identity) .. "/"
-                            )
-                            if okOpen then
-                                if gotOldIdentity and oldIdentity ~= nil then
-                                    pcall(setIdentity, oldIdentity)
-                                end
-                                return true, via .. " via " .. tostring(setIdentityName)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-
-        if gotOldIdentity and oldIdentity ~= nil then
-            pcall(setIdentity, oldIdentity)
-        end
-    end
-
-    local function getService(name)
-        return getServiceFrom(game, name)
-    end
-
-    for _, target in ipairs(urls) do
-        local linking = getService("LinkingService")
-        if linking then
-            local ok, result = pcall(function() return linking:OpenUrl(target) end)
-            if ok and result ~= false then return true, "LinkingService:OpenUrl" end
-
-            ok, result = pcall(function()
-                local fn = linking.OpenUrl
-                return fn(linking, target)
-            end)
-            if ok and result ~= false then return true, "LinkingService.OpenUrl" end
-        end
-
-        local guiService = getService("GuiService")
-        if guiService then
-            local ok, result = pcall(function() return guiService:OpenBrowserWindow(target) end)
-            if ok and result ~= false then return true, "GuiService.OpenBrowserWindow" end
-
-            ok, result = pcall(function() return guiService:OpenNativeOverlay(target) end)
-            if ok and result ~= false then return true, "GuiService.OpenNativeOverlay" end
-        end
-
-        local browserService = getService("BrowserService")
-        if browserService then
-            local ok, result = pcall(function() return browserService:OpenBrowserWindow(target) end)
-            if ok and result ~= false then return true, "BrowserService.OpenBrowserWindow" end
-
-            ok, result = pcall(function() return browserService:OpenNativeOverlay(target) end)
-            if ok and result ~= false then return true, "BrowserService.OpenNativeOverlay" end
-
-            ok, result = pcall(function() return browserService:OpenNativeOverlay("PuckAFK", target) end)
-            if ok and result ~= false then return true, "BrowserService.OpenNativeOverlay(title,url)" end
-        end
-    end
-
-    return false, "no-supported-opener:" .. tostring(executorName())
+    return false, "clipboard-unavailable:" .. tostring(executorName())
 end
 
 local function fetchText(url)
@@ -1038,12 +729,11 @@ local function createDiscordCard(parent, position, size, callback)
     local sub = accessLabel(card, "Get your Premium key and account help", 9, Color3.fromRGB(150, 154, 185), 24)
     sub.Position = UDim2.fromOffset(58, 26)
     sub.Size = UDim2.new(1, -142, 0, 16)
-    local open = accessLabel(card, "OPEN", 10, Color3.fromRGB(206, 210, 255), 24)
+    local open = accessLabel(card, "COPY", 10, Color3.fromRGB(206, 210, 255), 24)
     open.AnchorPoint = Vector2.new(1, 0.5)
     open.Position = UDim2.new(1, -34, 0.5, 0)
     open.Size = UDim2.fromOffset(48, 22)
     open.TextXAlignment = Enum.TextXAlignment.Right
-    local openIcon = accessIcon(card, ICON.ExternalLink, UDim2.new(1, -24, 0.5, -7), UDim2.fromOffset(14, 14), Color3.fromRGB(206, 210, 255), 24)
 
     local alive = true
     card.AncestryChanged:Connect(function(_, p) if not p then alive = false end end)
@@ -1054,7 +744,6 @@ local function createDiscordCard(parent, position, size, callback)
         accessTween(scale, 0.11, {Scale = 1.01})
         accessTween(logoScale, 0.11, {Scale = 1.08})
         accessTween(open, 0.11, {TextColor3 = Color3.fromRGB(255, 255, 255)})
-        accessTween(openIcon, 0.11, {ImageColor3 = Color3.fromRGB(255, 255, 255)})
     end)
     card.MouseLeave:Connect(function()
         if not alive then return end
@@ -1063,7 +752,6 @@ local function createDiscordCard(parent, position, size, callback)
         accessTween(scale, 0.11, {Scale = 1})
         accessTween(logoScale, 0.11, {Scale = 1})
         accessTween(open, 0.11, {TextColor3 = Color3.fromRGB(206, 210, 255)})
-        accessTween(openIcon, 0.11, {ImageColor3 = Color3.fromRGB(206, 210, 255)})
     end)
     card.MouseButton1Down:Connect(function()
         if alive then accessTween(scale, 0.05, {Scale = 0.985}) end
@@ -1086,7 +774,7 @@ local function createDiscordCard(parent, position, size, callback)
         end
     end)
 
-    return card
+    return card, open
 end
 
 local function runAccessGate(openPremiumImmediately, rememberedChoice)
@@ -1100,7 +788,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     local currentHeight = chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.7.0"
+    ENV.PuckHubLoaderVersion = "5.8.0"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
@@ -1514,35 +1202,44 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     premiumTitle.Size = UDim2.new(1, -28, 0, 22)
     premiumTitle.TextXAlignment = Enum.TextXAlignment.Center
 
-    local premiumDetail = accessLabel(premium, "Open Discord for your key, then validate it below.", 10, THEME.DimText, 12)
+    local premiumDetail = accessLabel(premium, "Copy a link, paste it into your browser, then validate your key below.", 10, THEME.DimText, 12)
     premiumDetail.Position = UDim2.fromOffset(14, 31)
     premiumDetail.Size = UDim2.new(1, -28, 0, 18)
     premiumDetail.TextXAlignment = Enum.TextXAlignment.Center
     premiumDetail.TextTruncate = Enum.TextTruncate.AtEnd
 
-    createDiscordCard(premium, UDim2.fromOffset(14, 58), UDim2.new(1, -28, 0, 56), function()
+    local discordCard, discordAction
+    discordCard, discordAction = createDiscordCard(premium, UDim2.fromOffset(14, 58), UDim2.new(1, -28, 0, 56), function()
         if busy then return end
-        setPremiumStatus("Opening PuckAFK Discord...")
-        local opened = openWebsite(DISCORD_INVITE, DISCORD_APP_INVITE)
-        if opened then
-            setPremiumStatus("PuckAFK Discord opened.", false, true)
+        setPremiumStatus("Copying Discord invite...")
+        local copied = copyToClipboard(DISCORD_INVITE)
+        if copied then
+            if discordAction and discordAction.Parent then discordAction.Text = "COPIED" end
+            setPremiumStatus("Discord invite copied — paste it into your browser.", false, true)
+            task.delay(2.4, function()
+                if discordAction and discordAction.Parent then discordAction.Text = "COPY" end
+            end)
         else
-            setPremiumStatus("External link bridge unavailable on " .. executorName() .. ".", true)
+            setPremiumStatus("Clipboard is unavailable on " .. executorName() .. ".", true)
         end
     end)
 
-    local premiumPageButton = accessButton(premium, "PremiumPage", "OPEN PREMIUM WEBSITE", UDim2.new(0, 14, 0, 122), UDim2.new(1, -28, 0, 30), function()
+    local premiumPageButton
+    premiumPageButton = accessButton(premium, "PremiumPage", "COPY PREMIUM WEBSITE", UDim2.new(0, 14, 0, 122), UDim2.new(1, -28, 0, 30), function()
         if busy then return end
-        setPremiumStatus("Opening Premium website...")
-        local opened = openWebsite(PREMIUM_PAGE)
-        if opened then
-            setPremiumStatus("Premium website opened.", false, true)
+        setPremiumStatus("Copying Premium website...")
+        local copied = copyToClipboard(PREMIUM_PAGE)
+        if copied then
+            if premiumPageButton and premiumPageButton.Parent then premiumPageButton.Text = "COPIED — PASTE IN BROWSER" end
+            setPremiumStatus("Premium website copied — paste it into your browser.", false, true)
+            task.delay(2.4, function()
+                if premiumPageButton and premiumPageButton.Parent then premiumPageButton.Text = "COPY PREMIUM WEBSITE" end
+            end)
         else
-            setPremiumStatus("External link bridge unavailable on " .. executorName() .. ".", true)
+            setPremiumStatus("Clipboard is unavailable on " .. executorName() .. ".", true)
         end
     end, {ActiveBorderColor3 = THEME.Accent})
     accessIcon(premiumPageButton, ICON.Globe, UDim2.fromOffset(10, 7), UDim2.fromOffset(16, 16), THEME.DimText, 24)
-    accessIcon(premiumPageButton, ICON.ExternalLink, UDim2.new(1, -26, 0, 7), UDim2.fromOffset(16, 16), THEME.DimText, 24)
 
     local savedKey = readSavedKey()
     local keyBox = accessCreate("TextBox", {
