@@ -1100,4 +1100,295 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     brandIcon.AnchorPoint = Vector2.new(0.5, 0.5)
 
     local brand = label(topbar, "PuckAFK Hub", 13, THEME.Text, Enum.Font.GothamBold, 17)
-    brand.Position = UDim2.fromOffset(51
+    brand.Position = UDim2.fromOffset(51, 8)
+    brand.Size = UDim2.new(1, -130, 0, 20)
+    local version = label(topbar, "ACCESS  •  v5.3", 8, THEME.Faint, Enum.Font.GothamBold, 17)
+    version.Position = UDim2.fromOffset(51, 26)
+    version.Size = UDim2.new(1, -130, 0, 15)
+
+    local closeButton = makeIconButton(topbar, {
+        Name = "Close",
+        Position = UDim2.new(1, -47, 0, 10),
+        Size = UDim2.fromOffset(34, 30),
+        Icon = ICON.Close,
+        IconSize = UDim2.fromOffset(15, 15),
+        BackgroundColor3 = Color3.fromRGB(18, 21, 29),
+        HoverColor3 = THEME.DangerSoft,
+        HoverStrokeColor3 = THEME.Danger,
+        HoverIconColor3 = Color3.fromRGB(255, 174, 181),
+    })
+
+    local divider = accessCreate("Frame", {
+        Position = UDim2.fromOffset(14, 49),
+        Size = UDim2.new(1, -28, 0, 1),
+        BackgroundColor3 = THEME.StrokeSoft,
+        BackgroundTransparency = 0.25,
+        BorderSizePixel = 0,
+        ZIndex = 15,
+        Parent = shell,
+    })
+
+    local body = accessCreate("Frame", {
+        Position = UDim2.fromOffset(14, 60),
+        Size = UDim2.new(1, -28, 1, -74),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        ZIndex = 15,
+        Parent = shell,
+    })
+
+    local chooser = accessCreate("CanvasGroup", {
+        Name = "Chooser",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        GroupTransparency = openPremiumImmediately and 1 or 0,
+        Visible = not openPremiumImmediately,
+        ZIndex = 16,
+        Parent = body,
+    })
+
+    local premium = accessCreate("CanvasGroup", {
+        Name = "Premium",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        GroupTransparency = openPremiumImmediately and 0 or 1,
+        Visible = openPremiumImmediately,
+        ZIndex = 16,
+        Parent = body,
+    })
+
+    local dragging = false
+    local dragStart
+    local startPosition
+    local dragHandle = accessCreate("TextButton", {
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.new(1, -56, 0, 50),
+        BackgroundTransparency = 1,
+        Text = "",
+        AutoButtonColor = false,
+        Active = true,
+        ZIndex = 18,
+        Parent = topbar,
+    })
+    dragHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPosition = shell.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging or not dragStart or not startPosition then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Position - dragStart
+            shell.Position = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + delta.X, startPosition.Y.Scale, startPosition.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+    end)
+
+    local function closeAnimated()
+        if cancelled then return end
+        cancelled = true
+        accessTween(dim, 0.16, {BackgroundTransparency = 1})
+        accessTween(shell, 0.16, {GroupTransparency = 1, Position = UDim2.new(shell.Position.X.Scale, shell.Position.X.Offset, shell.Position.Y.Scale, shell.Position.Y.Offset + 10)})
+        accessTween(shellScale, 0.16, {Scale = uiScaleValue * 0.97})
+        task.delay(0.17, function() pcall(function() gui:Destroy() end) end)
+    end
+    closeButton.Activated:Connect(closeAnimated)
+
+    local function resize(height)
+        currentHeight = height
+        accessTween(shell, 0.20, {Size = UDim2.fromOffset(windowWidth, height)}, Enum.EasingStyle.Quart)
+    end
+
+    local function switchPanel(from, to, targetHeight, direction)
+        if busy or cancelled then return end
+        direction = direction or 1
+        to.Visible = true
+        to.GroupTransparency = 1
+        to.Position = UDim2.new(0, 18 * direction, 0, 0)
+        accessTween(from, 0.13, {GroupTransparency = 1, Position = UDim2.new(0, -14 * direction, 0, 0)})
+        resize(targetHeight)
+        task.delay(0.10, function()
+            if cancelled or not to.Parent then return end
+            from.Visible = false
+            from.Position = UDim2.fromScale(0, 0)
+            accessTween(to, 0.20, {GroupTransparency = 0, Position = UDim2.fromScale(0, 0)}, Enum.EasingStyle.Quart)
+        end)
+    end
+
+    -- ------------------------------------------------------------------------
+    -- Chooser
+    -- ------------------------------------------------------------------------
+    local chooserTitle = label(chooser, "Choose your access", phoneLayout and 19 or 21, THEME.Text, Enum.Font.GothamBold, 20)
+    chooserTitle.Position = UDim2.fromOffset(2, 0)
+    chooserTitle.Size = UDim2.new(1, -4, 0, 30)
+    local chooserSub = label(chooser, "Pick Free for the public hub or Premium to validate your PuckHub key.", 10, THEME.Muted, Enum.Font.Gotham, 20)
+    chooserSub.Position = UDim2.fromOffset(2, 30)
+    chooserSub.Size = UDim2.new(1, -4, 0, 24)
+    chooserSub.TextWrapped = true
+
+    rememberedChoice = normalizeChoice(rememberedChoice)
+    local rememberChoice = rememberedChoice ~= ""
+    local savedCountdownToken = 0
+    local function cancelSavedCountdown() savedCountdownToken = savedCountdownToken + 1 end
+
+    local chooserStatusPill, _, setChooserStatus = makeStatus(chooser, UDim2.new(0, 2, 1, -36), UDim2.new(1, -4, 0, 32))
+
+    local freeCard
+    local premiumCard
+    local function chooseFree()
+        if busy or cancelled then return end
+        cancelSavedCountdown()
+        if rememberChoice then saveChoice("free") else clearSavedChoice() end
+        busy = true
+        setChooserStatus("Loading Free access…", false, false)
+        task.spawn(function()
+            local ok = launchFree(function(message, isError)
+                setChooserStatus(message, isError, not isError)
+            end)
+            busy = false
+            if ok and not cancelled then
+                setChooserStatus("Free access started.", false, true)
+                task.wait(0.12)
+                closeAnimated()
+            end
+        end)
+    end
+
+    local function choosePremium()
+        if busy or cancelled then return end
+        cancelSavedCountdown()
+        if rememberChoice then saveChoice("premium") else clearSavedChoice() end
+        switchPanel(chooser, premium, premiumHeight, 1)
+    end
+
+    if phoneLayout then
+        freeCard = makeAccessCard(chooser, {
+            Name = "FreeAccess",
+            Position = UDim2.fromOffset(2, 66),
+            Size = UDim2.new(1, -4, 0, 125),
+            Icon = ICON.Gamepad,
+            AccentColor = THEME.Accent,
+            IconBackground = THEME.AccentSoft,
+            Tag = "KEYLESS",
+            Title = "Free access",
+            Description = "Public PuckAFK scripts with no key required.",
+            ActionText = "CONTINUE FREE",
+            ActionColor = Color3.fromRGB(53, 103, 217),
+            ActionHoverColor = THEME.Accent,
+            Callback = chooseFree,
+        })
+        premiumCard = makeAccessCard(chooser, {
+            Name = "PremiumAccess",
+            Position = UDim2.fromOffset(2, 200),
+            Size = UDim2.new(1, -4, 0, 125),
+            BackgroundColor3 = Color3.fromRGB(25, 23, 20),
+            HoverColor3 = Color3.fromRGB(34, 30, 23),
+            StrokeColor3 = Color3.fromRGB(66, 57, 36),
+            Icon = ICON.Crown,
+            AccentColor = THEME.Premium,
+            IconBackground = THEME.PremiumSoft,
+            Tag = "PAID TIER",
+            Title = "Premium access",
+            Description = "Validate your key to unlock paid Premium scripts.",
+            ActionText = "OPEN PREMIUM",
+            ActionColor = Color3.fromRGB(154, 111, 31),
+            ActionHoverColor = Color3.fromRGB(187, 139, 40),
+            Callback = choosePremium,
+        })
+    else
+        local cardWidth = math.floor((windowWidth - 28 - 10) / 2)
+        freeCard = makeAccessCard(chooser, {
+            Name = "FreeAccess",
+            Position = UDim2.fromOffset(2, 67),
+            Size = UDim2.fromOffset(cardWidth, 177),
+            Icon = ICON.Gamepad,
+            AccentColor = THEME.Accent,
+            IconBackground = THEME.AccentSoft,
+            Tag = "KEYLESS",
+            Title = "Free access",
+            Description = "Public PuckAFK scripts. No key, no account validation, just continue.",
+            ActionText = "CONTINUE FREE",
+            ActionColor = Color3.fromRGB(53, 103, 217),
+            ActionHoverColor = THEME.Accent,
+            Callback = chooseFree,
+        })
+        premiumCard = makeAccessCard(chooser, {
+            Name = "PremiumAccess",
+            Position = UDim2.fromOffset(cardWidth + 12, 67),
+            Size = UDim2.fromOffset(cardWidth, 177),
+            BackgroundColor3 = Color3.fromRGB(25, 23, 20),
+            HoverColor3 = Color3.fromRGB(34, 30, 23),
+            StrokeColor3 = Color3.fromRGB(66, 57, 36),
+            Icon = ICON.Crown,
+            AccentColor = THEME.Premium,
+            IconBackground = THEME.PremiumSoft,
+            Tag = "PAID TIER",
+            Title = "Premium access",
+            Description = "Validate your PuckHub key, then launch the paid release for this game.",
+            ActionText = "OPEN PREMIUM",
+            ActionColor = Color3.fromRGB(154, 111, 31),
+            ActionHoverColor = Color3.fromRGB(187, 139, 40),
+            Callback = choosePremium,
+        })
+    end
+
+    local toggleY = phoneLayout and 336 or 257
+    local _, setRememberToggle = makeToggle(chooser, UDim2.fromOffset(2, toggleY), windowWidth - 32, rememberChoice, function(value)
+        rememberChoice = value
+        cancelSavedCountdown()
+        if not value then
+            clearSavedChoice()
+            rememberedChoice = ""
+            setChooserStatus("Remember choice is off — you will be asked every time.", false, true)
+        else
+            setChooserStatus("Your next selection will be remembered.", false, true)
+        end
+    end)
+
+    -- ------------------------------------------------------------------------
+    -- Premium
+    -- ------------------------------------------------------------------------
+    local premiumBack = makeIconButton(premium, {
+        Name = "Back",
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.fromOffset(34, 32),
+        Icon = ICON.Back,
+        IconSize = UDim2.fromOffset(16, 16),
+        Callback = function()
+            if busy then return end
+            switchPanel(premium, chooser, chooserHeight, -1)
+        end,
+    })
+
+    local premiumTitle = label(premium, "Premium access", 19, THEME.Text, Enum.Font.GothamBold, 20)
+    premiumTitle.Position = UDim2.fromOffset(45, -1)
+    premiumTitle.Size = UDim2.new(1, -47, 0, 26)
+    local premiumSub = label(premium, "Get your key, paste it below, then validate.", 10, THEME.Muted, Enum.Font.Gotham, 20)
+    premiumSub.Position = UDim2.fromOffset(45, 24)
+    premiumSub.Size = UDim2.new(1, -47, 0, 20)
+
+    local setPremiumStatus
+    local premiumStatusPill, _, premiumStatusSetter = makeStatus(premium, UDim2.new(0, 0, 1, -36), UDim2.new(1, 0, 0, 32))
+    setPremiumStatus = premiumStatusSetter
+
+    local discordCard = accessCreate("TextButton", {
+        Name = "DiscordCard",
+        Position = UDim2.fromOffset(0, 57),
+        Size = UDim2.new(1, 0, 0, 68),
+        BackgroundColor3 = THEME.DiscordSoft,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Text = "",
+        ZIndex = 24,
+        Parent = premium,
+    })
+    corner(discordCard, 13)
+    local discordStroke = stroke(discordCard, Color3.fromRGB(65, 71, 130), 0.1, 1)
+    local discordSc
