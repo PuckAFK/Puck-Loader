@@ -36,8 +36,8 @@
       Build a Gun Army        : 134162299584012
       Ping Pong Training       : 137737622318848
 
-    One free loader for all supported PuckAFK scripts.
-    Includes strict automatic PlaceId + universe detection and universal anti-AFK.
+    Free + Premium PuckAFK access gateway.
+    Free keeps the existing automatic PlaceId/universe routing; Premium validates a PuckHub key first.
 ]]
 
 local ENV = (getgenv and getgenv()) or _G
@@ -184,6 +184,311 @@ local function enableAntiAFK()
 end
 
 enableAntiAFK()
+
+-- ============================================================
+-- PUCKAFK FREE / PREMIUM ACCESS GATE v2
+-- Free continues through this file's existing public route map.
+-- Premium hands the entered/saved key to the canonical PuckAFK
+-- premium-aware loader, which performs server-side validation.
+-- ============================================================
+
+local ACCESS_GATE_DISCORD = "https://discord.gg/NFfs8G2WAz"
+local ACCESS_GATE_PREMIUM_PAGE = "https://puckafk.site/premium/"
+local ACCESS_GATE_MAIN_LOADER = "https://puckafk.site/loader.lua"
+local ACCESS_GATE_KEY_FILE = "PuckHub/premium.key"
+local ACCESS_GATE_PUCKUI = "https://raw.githubusercontent.com/PuckAFK/Puck-Loader/refs/heads/main/ui/PuckUI.lua"
+
+local function accessTrim(value)
+    return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function accessNormalizeKey(value)
+    return accessTrim(value):gsub("%s+", "")
+end
+
+local function accessReadSavedKey()
+    local envKey = accessNormalizeKey(ENV.PuckHubKey)
+    if envKey ~= "" then return envKey end
+    if type(isfile) == "function" and type(readfile) == "function" then
+        local okExists, exists = pcall(isfile, ACCESS_GATE_KEY_FILE)
+        if okExists and exists then
+            local okRead, value = pcall(readfile, ACCESS_GATE_KEY_FILE)
+            if okRead then return accessNormalizeKey(value) end
+        end
+    end
+    return ""
+end
+
+local function accessSaveKey(key)
+    key = accessNormalizeKey(key)
+    if key == "" then return false end
+    ENV.PuckHubKey = key
+    if type(writefile) ~= "function" then return true end
+    if type(makefolder) == "function" then pcall(makefolder, "PuckHub") end
+    return pcall(writefile, ACCESS_GATE_KEY_FILE, key)
+end
+
+local function accessClearSavedKey()
+    ENV.PuckHubKey = nil
+    if type(delfile) == "function" and type(isfile) == "function" then
+        local okExists, exists = pcall(isfile, ACCESS_GATE_KEY_FILE)
+        if okExists and exists then pcall(delfile, ACCESS_GATE_KEY_FILE) end
+    end
+end
+
+local function accessOpenUrl(url)
+    local opened = false
+    if type(openurl) == "function" then
+        opened = pcall(openurl, url)
+    elseif type(open_url) == "function" then
+        opened = pcall(open_url, url)
+    end
+
+    if not opened then
+        local okGui, GuiService = pcall(game.GetService, game, "GuiService")
+        if okGui and GuiService then
+            opened = pcall(function() GuiService:OpenBrowserWindow(url) end)
+        end
+    end
+
+    local copied = false
+    if type(setclipboard) == "function" then
+        copied = pcall(setclipboard, url)
+    elseif type(toclipboard) == "function" then
+        copied = pcall(toclipboard, url)
+    end
+    return opened, copied
+end
+
+local function accessLoadSource(url)
+    local ok, body = pcall(function() return game:HttpGet(url) end)
+    if ok and type(body) == "string" and #body > 20 then return true, body end
+    return false, tostring(body or "HTTP request failed")
+end
+
+local function accessLaunchCanonicalPremium(key, setStatus)
+    key = accessNormalizeKey(key)
+    if key == "" then
+        setStatus("Enter your PuckHub Premium key first.", Color3.fromRGB(180, 58, 64))
+        return false
+    end
+    if #key < 6 or #key > 256 then
+        setStatus("That Premium key format is not valid.", Color3.fromRGB(180, 58, 64))
+        return false
+    end
+
+    setStatus("Preparing Premium validation...")
+    local ok, source = accessLoadSource(ACCESS_GATE_MAIN_LOADER)
+    if not ok then
+        setStatus("Could not reach the PuckAFK Premium loader.", Color3.fromRGB(180, 58, 64))
+        return false
+    end
+
+    local compiler = loadstring or load
+    if type(compiler) ~= "function" then
+        setStatus("This executor does not provide loadstring/load.", Color3.fromRGB(180, 58, 64))
+        return false
+    end
+
+    local chunk, compileError = compiler(source)
+    if not chunk then
+        setStatus("Premium loader compile failed: " .. tostring(compileError), Color3.fromRGB(180, 58, 64))
+        return false
+    end
+
+    accessSaveKey(key)
+    ENV.PuckHubAccessMode = "premium"
+    setStatus("Premium key ready. Validating with PuckAFK...", Color3.fromRGB(48, 145, 78))
+    task.spawn(chunk)
+    return true
+end
+
+local function runAccessGate()
+    local okUi, uiSource = accessLoadSource(ACCESS_GATE_PUCKUI)
+    if not okUi then
+        warn("[PuckAFK Hub] Access selector unavailable; continuing with Free access.")
+        return "free"
+    end
+
+    local compiler = loadstring or load
+    if type(compiler) ~= "function" then
+        warn("[PuckAFK Hub] loadstring/load unavailable; continuing with Free access.")
+        return "free"
+    end
+
+    local uiChunk, uiCompileError = compiler(uiSource)
+    if not uiChunk then
+        warn("[PuckAFK Hub] PuckUI compile failed: " .. tostring(uiCompileError))
+        return "free"
+    end
+
+    local okPuckUI, PuckUI = pcall(uiChunk)
+    if not okPuckUI or type(PuckUI) ~= "table" then
+        warn("[PuckAFK Hub] PuckUI startup failed; continuing with Free access.")
+        return "free"
+    end
+
+    local choice
+    local enteredKey = ""
+    local closed = false
+
+    local Window = PuckUI:CreateWindow({
+        Name = "PuckAFK Hub | Access",
+        GuiName = "PuckAFK_Hub_Access",
+        Width = 520,
+        Height = 440,
+        DisableConfigs = true,
+    })
+
+    if Window.SetCloseCallback then
+        Window:SetCloseCallback(function()
+            closed = true
+            Window:Destroy()
+        end)
+    end
+
+    local AccessTab = Window:CreateTab("Access")
+    local PremiumTab = Window:CreateTab("Premium")
+
+    AccessTab:CreateSection("Choose access")
+    AccessTab:CreateParagraph({
+        Title = "Free or Premium",
+        Content = "Free access launches the public PuckAFK script for this game. Premium access lets you enter your PuckHub key and validates it before a paid script is delivered.",
+        Height = 72,
+    })
+    AccessTab:CreateLabel(("PlaceId %s  |  GameId %s"):format(tostring(game.PlaceId), tostring(game.GameId)))
+
+    AccessTab:CreateButton({
+        Name = "Continue with Free Access",
+        Callback = function() choice = "free" end,
+    })
+
+    AccessTab:CreateButton({
+        Name = "Choose Premium Access",
+        Callback = function() Window:SelectTab(PremiumTab) end,
+    })
+
+    AccessTab:CreateSection("Access model")
+    AccessTab:CreateLabel("Free: keyless public scripts")
+    AccessTab:CreateLabel("Premium: validated PuckHub key + paid releases")
+
+    PremiumTab:CreateSection("Premium access")
+    PremiumTab:CreateParagraph({
+        Title = "Unlock Premium releases",
+        Content = "Join the PuckAFK Discord or open the Premium page if you need a key. Enter it below, then the canonical PuckAFK loader validates the key before any Premium source is returned.",
+        Height = 78,
+    })
+
+    local saved = accessReadSavedKey()
+    local premiumStatus = PremiumTab:CreateLabel(saved ~= "" and "Saved Premium key detected." or "No saved Premium key detected.")
+    local function setPremiumStatus(text, color)
+        premiumStatus:Set(tostring(text or ""), nil, color)
+    end
+
+    local input = PremiumTab:CreateInput({
+        Name = "PuckHub Premium Key",
+        CurrentValue = "",
+        PlaceholderText = "PH-XXXXX-XXXXX-XXXXX-XXXXX",
+        NoConfig = true,
+        Callback = function(value) enteredKey = accessNormalizeKey(value) end,
+    })
+
+    PremiumTab:CreateButton({
+        Name = "Open / Copy Discord Invite",
+        Callback = function()
+            local opened, copied = accessOpenUrl(ACCESS_GATE_DISCORD)
+            if opened then
+                setPremiumStatus(copied and "Discord opened and invite copied." or "Discord invite opened.")
+            elseif copied then
+                setPremiumStatus("Discord invite copied to clipboard.")
+            else
+                setPremiumStatus("Discord: " .. ACCESS_GATE_DISCORD)
+            end
+        end,
+    })
+
+    PremiumTab:CreateButton({
+        Name = "Open / Copy Premium Page",
+        Callback = function()
+            local opened, copied = accessOpenUrl(ACCESS_GATE_PREMIUM_PAGE)
+            if opened then
+                setPremiumStatus("Premium page opened.")
+            elseif copied then
+                setPremiumStatus("Premium page copied to clipboard.")
+            else
+                setPremiumStatus("Premium: " .. ACCESS_GATE_PREMIUM_PAGE)
+            end
+        end,
+    })
+
+    PremiumTab:CreateButton({
+        Name = "Validate Entered Key & Launch Premium",
+        Callback = function()
+            local key = enteredKey ~= "" and enteredKey or input:Get()
+            if accessLaunchCanonicalPremium(key, setPremiumStatus) then choice = "premium" end
+        end,
+    })
+
+    PremiumTab:CreateButton({
+        Name = "Validate Saved Key & Launch Premium",
+        Callback = function()
+            local key = accessReadSavedKey()
+            if key == "" then
+                setPremiumStatus("No saved Premium key was found.", Color3.fromRGB(180, 58, 64))
+                return
+            end
+            if accessLaunchCanonicalPremium(key, setPremiumStatus) then choice = "premium" end
+        end,
+    })
+
+    PremiumTab:CreateButton({
+        Name = "Forget Saved Premium Key",
+        Callback = function()
+            accessClearSavedKey()
+            enteredKey = ""
+            input:Set("")
+            setPremiumStatus("Saved Premium key removed.")
+        end,
+    })
+
+    PremiumTab:CreateSection("Security")
+    PremiumTab:CreateLabel("Keys are never sent to Discord or GitHub.")
+    PremiumTab:CreateLabel("Premium validation is performed by PuckAFK.")
+    PremiumTab:CreateLabel("Successful keys can be saved locally for future runs.")
+
+    while not choice and not closed do task.wait(0.05) end
+    if Window and Window.Destroy then pcall(function() Window:Destroy() end) end
+    if closed then return "cancel" end
+    return choice or "free"
+end
+
+local requestedAccess = string.lower(accessTrim(ENV.PuckHubAccessMode))
+local selectedAccess
+
+if requestedAccess == "free" then
+    selectedAccess = "free"
+elseif requestedAccess == "premium" and accessReadSavedKey() ~= "" then
+    local ok, source = accessLoadSource(ACCESS_GATE_MAIN_LOADER)
+    if ok then
+        local compiler = loadstring or load
+        local chunk = type(compiler) == "function" and compiler(source) or nil
+        if chunk then
+            task.spawn(chunk)
+            return
+        end
+    end
+    selectedAccess = runAccessGate()
+else
+    selectedAccess = runAccessGate()
+end
+
+if selectedAccess == "cancel" then
+    return
+elseif selectedAccess == "premium" then
+    return
+end
+
+-- Free access falls through into the existing route detector below.
 
 local SNIPER_ARENA_ROUTE = {
     name = "Sniper Arena",
