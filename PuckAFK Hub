@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v4 - Classic UI
+    PuckAFK Hub | Universal Access Loader v5 - Classic Release UI
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -9,6 +9,12 @@
          then launch the paid Premium source for the current game.
 
     Premium keys are saved locally only after successful validation.
+
+    v5 release polish:
+      - Branded Discord card with an in-loader Discord mark.
+      - Website actions open the browser directly; no clipboard fallback.
+      - Animated entrance, page transitions, buttons, inputs, status, and exit.
+      - Idempotent GUI cleanup and executor-safe fallbacks.
 ]]
 
 local ENV = (type(getgenv) == "function" and getgenv()) or _G
@@ -131,29 +137,35 @@ local function clearSavedKey()
     end
 end
 
-local function openOrCopy(url)
-    local opened = false
-    if type(openurl) == "function" then
-        opened = pcall(openurl, url)
-    elseif type(open_url) == "function" then
-        opened = pcall(open_url, url)
-    end
+local function openWebsite(url)
+    url = trim(url)
+    if url == "" then return false end
 
-    if not opened then
-        local okGui, GuiService = pcall(game.GetService, game, "GuiService")
-        if okGui and GuiService then
-            opened = pcall(function() GuiService:OpenBrowserWindow(url) end)
+    local candidates = {
+        rawget(ENV, "openurl"),
+        rawget(ENV, "open_url"),
+        rawget(_G, "openurl"),
+        rawget(_G, "open_url"),
+    }
+
+    for _, opener in ipairs(candidates) do
+        if type(opener) == "function" then
+            local ok, result = pcall(opener, url)
+            if ok and result ~= false then
+                return true
+            end
         end
     end
 
-    local copied = false
-    if type(setclipboard) == "function" then
-        copied = pcall(setclipboard, url)
-    elseif type(toclipboard) == "function" then
-        copied = pcall(toclipboard, url)
+    local okGui, GuiService = pcall(game.GetService, game, "GuiService")
+    if okGui and GuiService then
+        local ok = pcall(function()
+            GuiService:OpenBrowserWindow(url)
+        end)
+        if ok then return true end
     end
 
-    return opened, copied
+    return false
 end
 
 local function fetchText(url)
@@ -375,6 +387,9 @@ local THEME = {
     Accent = Color3.fromRGB(0, 95, 255),
     Danger = Color3.fromRGB(180, 58, 64),
     Success = Color3.fromRGB(48, 145, 78),
+    Discord = Color3.fromRGB(88, 101, 242),
+    DiscordDark = Color3.fromRGB(32, 34, 52),
+    DiscordHover = Color3.fromRGB(40, 43, 68),
 }
 
 local function accessCreate(className, properties)
@@ -467,43 +482,221 @@ local function destroyOldAccessGui()
     end
 end
 
-local function accessButton(parent, name, textValue, position, size, callback)
+local function accessButton(parent, name, textValue, position, size, callback, options)
+    options = options or {}
+    local baseColor = options.BackgroundColor3 or THEME.Element
+    local hoverColor = options.HoverColor3 or THEME.ElementHover
     local button = accessCreate("TextButton", {
         Name = name,
         Position = position,
         Size = size,
-        BackgroundColor3 = THEME.Element,
+        BackgroundColor3 = baseColor,
         BorderColor3 = THEME.BorderDark,
         BorderSizePixel = 1,
         AutoButtonColor = false,
         Font = Enum.Font.Code,
         Text = tostring(textValue or "Button"),
-        TextColor3 = THEME.BrightText,
-        TextSize = 11,
-        ZIndex = 20,
+        TextColor3 = options.TextColor3 or THEME.BrightText,
+        TextSize = options.TextSize or 11,
+        ZIndex = options.ZIndex or 20,
         Parent = parent,
     })
 
-    accessCreate("Frame", {
+    local scale = accessCreate("UIScale", {Scale = 1, Parent = button})
+    local inner = accessCreate("Frame", {
+        Name = "InnerBorder",
         Position = UDim2.fromOffset(1, 1),
         Size = UDim2.new(1, -2, 1, -2),
         BackgroundTransparency = 1,
-        BorderColor3 = THEME.Border,
+        BorderColor3 = options.BorderColor3 or THEME.Border,
         BorderSizePixel = 1,
-        ZIndex = 21,
+        ZIndex = button.ZIndex + 1,
         Parent = button,
     })
 
-    button.MouseEnter:Connect(function()
-        accessTween(button, 0.08, {BackgroundColor3 = THEME.ElementHover})
+    local alive = true
+    button.AncestryChanged:Connect(function(_, parentNow)
+        if not parentNow then alive = false end
     end)
-    button.MouseLeave:Connect(function()
-        accessTween(button, 0.08, {BackgroundColor3 = THEME.Element})
+
+    local function hover(on)
+        if not alive then return end
+        accessTween(button, 0.10, {BackgroundColor3 = on and hoverColor or baseColor})
+        accessTween(inner, 0.10, {BorderColor3 = on and (options.ActiveBorderColor3 or THEME.Accent) or (options.BorderColor3 or THEME.Border)})
+        accessTween(scale, 0.10, {Scale = on and 1.012 or 1})
+    end
+
+    button.MouseEnter:Connect(function() hover(true) end)
+    button.MouseLeave:Connect(function() hover(false) end)
+    button.MouseButton1Down:Connect(function()
+        if alive then accessTween(scale, 0.055, {Scale = 0.975}) end
     end)
-    button.MouseButton1Click:Connect(function()
+    button.MouseButton1Up:Connect(function()
+        if alive then accessTween(scale, 0.085, {Scale = 1.012}) end
+    end)
+    button.Activated:Connect(function()
+        if not alive then return end
+        accessTween(scale, 0.06, {Scale = 0.972})
+        task.delay(0.065, function()
+            if alive then accessTween(scale, 0.11, {Scale = 1}) end
+        end)
         if callback then callback() end
     end)
-    return button
+    return button, scale, inner
+end
+
+local function createDiscordMark(parent, position, size, zIndex)
+    local holder = accessCreate("Frame", {
+        Name = "DiscordMark",
+        Position = position,
+        Size = UDim2.fromOffset(size, size),
+        BackgroundColor3 = THEME.Discord,
+        BorderSizePixel = 0,
+        ZIndex = zIndex or 30,
+        Parent = parent,
+    })
+    accessCreate("UICorner", {CornerRadius = UDim.new(0, math.max(7, math.floor(size * 0.24))), Parent = holder})
+    local scale = accessCreate("UIScale", {Scale = 1, Parent = holder})
+
+    local face = accessCreate("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.52),
+        Size = UDim2.fromScale(0.66, 0.46),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0,
+        ZIndex = holder.ZIndex + 1,
+        Parent = holder,
+    })
+    accessCreate("UICorner", {CornerRadius = UDim.new(1, 0), Parent = face})
+
+    local cut = accessCreate("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.fromScale(0.5, 0.44),
+        Size = UDim2.fromScale(0.50, 0.24),
+        BackgroundColor3 = THEME.Discord,
+        BorderSizePixel = 0,
+        ZIndex = holder.ZIndex + 2,
+        Parent = face,
+    })
+    accessCreate("UICorner", {CornerRadius = UDim.new(1, 0), Parent = cut})
+
+    for _, x in ipairs({0.37, 0.63}) do
+        local eye = accessCreate("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(x, 0.44),
+            Size = UDim2.fromScale(0.10, 0.14),
+            BackgroundColor3 = THEME.Discord,
+            BorderSizePixel = 0,
+            ZIndex = holder.ZIndex + 3,
+            Parent = face,
+        })
+        accessCreate("UICorner", {CornerRadius = UDim.new(1, 0), Parent = eye})
+    end
+
+    local leftTail = accessCreate("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.26, 0.72),
+        Size = UDim2.fromScale(0.14, 0.16),
+        Rotation = -28,
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0,
+        ZIndex = holder.ZIndex + 1,
+        Parent = holder,
+    })
+    accessCreate("UICorner", {CornerRadius = UDim.new(1, 0), Parent = leftTail})
+    local rightTail = leftTail:Clone()
+    rightTail.Position = UDim2.fromScale(0.74, 0.72)
+    rightTail.Rotation = 28
+    rightTail.Parent = holder
+
+    return holder, scale
+end
+
+local function createDiscordCard(parent, position, size, callback)
+    local card = accessCreate("TextButton", {
+        Name = "DiscordCard",
+        Position = position,
+        Size = size,
+        BackgroundColor3 = THEME.DiscordDark,
+        BorderColor3 = THEME.BorderDark,
+        BorderSizePixel = 1,
+        AutoButtonColor = false,
+        Text = "",
+        ZIndex = 20,
+        Parent = parent,
+    })
+    local scale = accessCreate("UIScale", {Scale = 1, Parent = card})
+    local inner = accessCreate("Frame", {
+        Position = UDim2.fromOffset(1, 1),
+        Size = UDim2.new(1, -2, 1, -2),
+        BackgroundTransparency = 1,
+        BorderColor3 = Color3.fromRGB(64, 68, 105),
+        BorderSizePixel = 1,
+        ZIndex = 21,
+        Parent = card,
+    })
+    accessCreate("Frame", {
+        Size = UDim2.fromOffset(3, size.Y.Offset - 4),
+        Position = UDim2.fromOffset(2, 2),
+        BackgroundColor3 = THEME.Discord,
+        BorderSizePixel = 0,
+        ZIndex = 22,
+        Parent = card,
+    })
+
+    local _, logoScale = createDiscordMark(card, UDim2.fromOffset(12, math.floor((size.Y.Offset - 36) / 2)), 36, 24)
+    local title = accessLabel(card, "PUCKAFK DISCORD", 12, THEME.BrightText, 24)
+    title.Position = UDim2.fromOffset(58, 8)
+    title.Size = UDim2.new(1, -142, 0, 18)
+    local sub = accessLabel(card, "Get your Premium key and account help", 9, Color3.fromRGB(150, 154, 185), 24)
+    sub.Position = UDim2.fromOffset(58, 26)
+    sub.Size = UDim2.new(1, -142, 0, 16)
+    local open = accessLabel(card, "OPEN  >", 10, Color3.fromRGB(206, 210, 255), 24)
+    open.AnchorPoint = Vector2.new(1, 0.5)
+    open.Position = UDim2.new(1, -12, 0.5, 0)
+    open.Size = UDim2.fromOffset(70, 22)
+    open.TextXAlignment = Enum.TextXAlignment.Right
+
+    local alive = true
+    card.AncestryChanged:Connect(function(_, p) if not p then alive = false end end)
+    card.MouseEnter:Connect(function()
+        if not alive then return end
+        accessTween(card, 0.11, {BackgroundColor3 = THEME.DiscordHover})
+        accessTween(inner, 0.11, {BorderColor3 = THEME.Discord})
+        accessTween(scale, 0.11, {Scale = 1.01})
+        accessTween(logoScale, 0.11, {Scale = 1.08})
+        accessTween(open, 0.11, {TextColor3 = Color3.fromRGB(255, 255, 255)})
+    end)
+    card.MouseLeave:Connect(function()
+        if not alive then return end
+        accessTween(card, 0.11, {BackgroundColor3 = THEME.DiscordDark})
+        accessTween(inner, 0.11, {BorderColor3 = Color3.fromRGB(64, 68, 105)})
+        accessTween(scale, 0.11, {Scale = 1})
+        accessTween(logoScale, 0.11, {Scale = 1})
+        accessTween(open, 0.11, {TextColor3 = Color3.fromRGB(206, 210, 255)})
+    end)
+    card.MouseButton1Down:Connect(function()
+        if alive then accessTween(scale, 0.05, {Scale = 0.985}) end
+    end)
+    card.MouseButton1Up:Connect(function()
+        if alive then accessTween(scale, 0.08, {Scale = 1.01}) end
+    end)
+    card.Activated:Connect(function()
+        if callback then callback() end
+    end)
+
+    task.spawn(function()
+        for _ = 1, 2 do
+            if not alive then return end
+            accessTween(logoScale, 0.32, {Scale = 1.055}, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+            task.wait(0.34)
+            if not alive then return end
+            accessTween(logoScale, 0.32, {Scale = 1}, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+            task.wait(0.34)
+        end
+    end)
+
+    return card
 end
 
 local function runAccessGate(openPremiumImmediately)
@@ -512,11 +705,12 @@ local function runAccessGate(openPremiumImmediately)
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
     local phoneLayout = UserInputService.TouchEnabled and math.min(viewport.X, viewport.Y) <= 720
     local windowWidth = phoneLayout and 350 or 480
-    local chooserHeight = phoneLayout and 320 or 300
-    local premiumHeight = phoneLayout and 430 or 405
+    local chooserHeight = phoneLayout and 326 or 306
+    local premiumHeight = phoneLayout and 470 or 448
     local currentHeight = chooserHeight
     local cancelled = false
     local busy = false
+    ENV.PuckHubLoaderVersion = "5.0.0"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
@@ -536,10 +730,10 @@ local function runAccessGate(openPremiumImmediately)
     local shadow = accessCreate("Frame", {
         Name = "Shadow",
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 4, 0.5, 4),
+        Position = UDim2.new(0.5, 4, 0.5, 16),
         Size = UDim2.fromOffset(windowWidth, currentHeight),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0.5,
+        BackgroundTransparency = 1,
         BorderSizePixel = 0,
         ZIndex = 1,
         Parent = gui,
@@ -548,7 +742,7 @@ local function runAccessGate(openPremiumImmediately)
     local card = accessCreate("CanvasGroup", {
         Name = "LoaderCard",
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 12),
         Size = UDim2.fromOffset(windowWidth, currentHeight),
         BackgroundColor3 = THEME.Main,
         BorderColor3 = THEME.BorderDark,
@@ -678,10 +872,16 @@ local function runAccessGate(openPremiumImmediately)
     })
     closeButton.MouseEnter:Connect(function() accessTween(closeButton, 0.08, {TextColor3 = THEME.BrightText}) end)
     closeButton.MouseLeave:Connect(function() accessTween(closeButton, 0.08, {TextColor3 = THEME.DimText}) end)
-    closeButton.MouseButton1Click:Connect(function()
+    local function closeAnimated()
+        if cancelled then return end
         cancelled = true
-        pcall(function() gui:Destroy() end)
-    end)
+        accessTween(card, 0.14, {GroupTransparency = 1, Position = UDim2.new(card.Position.X.Scale, card.Position.X.Offset, card.Position.Y.Scale, card.Position.Y.Offset + 8)})
+        accessTween(shadow, 0.14, {BackgroundTransparency = 1, Position = UDim2.new(shadow.Position.X.Scale, shadow.Position.X.Offset, shadow.Position.Y.Scale, shadow.Position.Y.Offset + 8)})
+        task.delay(0.15, function()
+            pcall(function() gui:Destroy() end)
+        end)
+    end
+    closeButton.Activated:Connect(closeAnimated)
 
     local dragHandle = accessCreate("TextButton", {
         Name = "DragHandle",
@@ -723,6 +923,7 @@ local function runAccessGate(openPremiumImmediately)
         Position = UDim2.fromOffset(2, 26),
         Size = UDim2.new(1, -4, 0, 1),
         BackgroundColor3 = THEME.Accent,
+        BackgroundTransparency = 0.75,
         BorderSizePixel = 0,
         ZIndex = 9,
         Parent = card,
@@ -739,9 +940,39 @@ local function runAccessGate(openPremiumImmediately)
         Parent = card,
     })
 
-    local chooser = accessCreate("Frame", {
+    local function pulseStatus(label, color)
+        if not label or not label.Parent then return end
+        label.TextTransparency = 0.35
+        accessTween(label, 0.16, {TextTransparency = 0, TextColor3 = color or label.TextColor3})
+        accessTween(accentTop, 0.11, {BackgroundTransparency = 0})
+        task.delay(0.12, function()
+            if accentTop.Parent then accessTween(accentTop, 0.22, {BackgroundTransparency = 0.12}) end
+        end)
+    end
+
+    local function switchPanel(fromPanel, toPanel, targetTitle, targetHeight, direction)
+        if not fromPanel or not toPanel then return end
+        direction = direction or 1
+        toPanel.Visible = true
+        toPanel.GroupTransparency = 1
+        toPanel.Position = UDim2.new(0, 12 * direction, 0, 0)
+        accessTween(fromPanel, 0.12, {GroupTransparency = 1, Position = UDim2.new(0, -10 * direction, 0, 0)})
+        currentHeight = targetHeight
+        titleLabel.Text = targetTitle
+        accessTween(card, 0.18, {Size = UDim2.fromOffset(windowWidth, currentHeight)}, Enum.EasingStyle.Quart)
+        accessTween(shadow, 0.18, {Size = UDim2.fromOffset(windowWidth, currentHeight)}, Enum.EasingStyle.Quart)
+        task.delay(0.09, function()
+            if cancelled or not toPanel.Parent then return end
+            fromPanel.Visible = false
+            fromPanel.Position = UDim2.fromScale(0, 0)
+            accessTween(toPanel, 0.18, {GroupTransparency = 0, Position = UDim2.fromScale(0, 0)}, Enum.EasingStyle.Quart)
+        end)
+    end
+
+    local chooser = accessCreate("CanvasGroup", {
         Name = "Chooser",
         Size = UDim2.fromScale(1, 1),
+        GroupTransparency = 0,
         BackgroundColor3 = THEME.Section,
         BorderColor3 = THEME.Border,
         BorderSizePixel = 1,
@@ -754,9 +985,10 @@ local function runAccessGate(openPremiumImmediately)
         ZIndex = 8, Parent = chooser,
     })
 
-    local premium = accessCreate("Frame", {
+    local premium = accessCreate("CanvasGroup", {
         Name = "Premium",
         Size = UDim2.fromScale(1, 1),
+        GroupTransparency = 1,
         BackgroundColor3 = THEME.Section,
         BorderColor3 = THEME.Border,
         BorderSizePixel = 1,
@@ -797,7 +1029,9 @@ local function runAccessGate(openPremiumImmediately)
     local function setChooserStatus(textValue, isError, success)
         if not chooserStatus.Parent then return end
         chooserStatus.Text = tostring(textValue or "")
-        chooserStatus.TextColor3 = isError and THEME.Danger or (success and THEME.Success or THEME.DimText)
+        local color = isError and THEME.Danger or (success and THEME.Success or THEME.DimText)
+        chooserStatus.TextColor3 = color
+        pulseStatus(chooserStatus, color)
     end
 
     accessButton(chooser, "FreeAccess", "FREE ACCESS", UDim2.new(0, 14, 0, freeY), UDim2.new(1, -28, 0, 42), function()
@@ -812,7 +1046,9 @@ local function runAccessGate(openPremiumImmediately)
             busy = false
             if ok and not cancelled then
                 setChooserStatus("Free access started.", false, true)
-                task.wait(0.12)
+                accessTween(card, 0.14, {GroupTransparency = 1})
+                accessTween(shadow, 0.14, {BackgroundTransparency = 1})
+                task.wait(0.15)
                 pcall(function() gui:Destroy() end)
             end
         end)
@@ -826,12 +1062,7 @@ local function runAccessGate(openPremiumImmediately)
     local premiumButton
     premiumButton = accessButton(chooser, "PremiumAccess", "PREMIUM ACCESS", UDim2.new(0, 14, 0, premiumY), UDim2.new(1, -28, 0, 42), function()
         if busy or cancelled then return end
-        chooser.Visible = false
-        premium.Visible = true
-        titleLabel.Text = "PuckAFK Hub | Premium"
-        currentHeight = premiumHeight
-        accessTween(card, 0.16, {Size = UDim2.fromOffset(windowWidth, currentHeight)})
-        accessTween(shadow, 0.16, {Size = UDim2.fromOffset(windowWidth, currentHeight)})
+        switchPanel(chooser, premium, "PuckAFK Hub | Premium", premiumHeight, 1)
     end)
 
     local premiumInfo = accessLabel(chooser, "Validate your paid PuckHub key before Premium source delivery", 9, THEME.DimText, 12)
@@ -839,21 +1070,45 @@ local function runAccessGate(openPremiumImmediately)
     premiumInfo.Size = UDim2.new(1, -28, 0, 14)
     premiumInfo.TextXAlignment = Enum.TextXAlignment.Center
 
+    local setPremiumStatus
+
     local premiumTitle = accessLabel(premium, "Premium Access", 13, THEME.BrightText, 12)
-    premiumTitle.Position = UDim2.fromOffset(14, 12)
+    premiumTitle.Position = UDim2.fromOffset(14, 10)
     premiumTitle.Size = UDim2.new(1, -28, 0, 22)
     premiumTitle.TextXAlignment = Enum.TextXAlignment.Center
 
-    local premiumDetail = accessLabel(premium, "Enter the key from PuckAFK Discord, then validate and launch.", 10, THEME.DimText, 12)
-    premiumDetail.Position = UDim2.fromOffset(14, 34)
+    local premiumDetail = accessLabel(premium, "Open Discord for your key, then validate it below.", 10, THEME.DimText, 12)
+    premiumDetail.Position = UDim2.fromOffset(14, 31)
     premiumDetail.Size = UDim2.new(1, -28, 0, 18)
     premiumDetail.TextXAlignment = Enum.TextXAlignment.Center
     premiumDetail.TextTruncate = Enum.TextTruncate.AtEnd
 
+    createDiscordCard(premium, UDim2.fromOffset(14, 58), UDim2.new(1, -28, 0, 56), function()
+        if busy then return end
+        setPremiumStatus("Opening PuckAFK Discord...")
+        local opened = openWebsite(DISCORD_INVITE)
+        if opened then
+            setPremiumStatus("PuckAFK Discord opened.", false, true)
+        else
+            setPremiumStatus("Browser opening is not supported by this executor.", true)
+        end
+    end)
+
+    accessButton(premium, "PremiumPage", "OPEN PREMIUM WEBSITE  >", UDim2.new(0, 14, 0, 122), UDim2.new(1, -28, 0, 30), function()
+        if busy then return end
+        setPremiumStatus("Opening Premium website...")
+        local opened = openWebsite(PREMIUM_PAGE)
+        if opened then
+            setPremiumStatus("Premium website opened.", false, true)
+        else
+            setPremiumStatus("Browser opening is not supported by this executor.", true)
+        end
+    end, {ActiveBorderColor3 = THEME.Accent})
+
     local savedKey = readSavedKey()
     local keyBox = accessCreate("TextBox", {
         Name = "PremiumKey",
-        Position = UDim2.fromOffset(14, 66),
+        Position = UDim2.fromOffset(14, 160),
         Size = UDim2.new(1, -28, 0, 34),
         BackgroundColor3 = THEME.Element,
         BorderColor3 = THEME.BorderDark,
@@ -874,49 +1129,42 @@ local function runAccessGate(openPremiumImmediately)
         PaddingRight = UDim.new(0, 10),
         Parent = keyBox,
     })
-    accessCreate("Frame", {
+    local keyInner = accessCreate("Frame", {
+        Name = "KeyInnerBorder",
         Position = UDim2.fromOffset(1, 1), Size = UDim2.new(1, -2, 1, -2),
         BackgroundTransparency = 1, BorderColor3 = THEME.Border, BorderSizePixel = 1,
         ZIndex = 21, Parent = keyBox,
     })
+    keyBox.Focused:Connect(function()
+        accessTween(keyBox, 0.12, {BackgroundColor3 = THEME.ElementHover})
+        accessTween(keyInner, 0.12, {BorderColor3 = THEME.Accent})
+    end)
+    keyBox.FocusLost:Connect(function()
+        accessTween(keyBox, 0.12, {BackgroundColor3 = THEME.Element})
+        accessTween(keyInner, 0.12, {BorderColor3 = THEME.Border})
+    end)
 
     local premiumStatus = accessLabel(premium, savedKey ~= "" and "Saved Premium key detected." or "No saved Premium key.", 9, THEME.DimText, 12)
-    premiumStatus.Position = UDim2.fromOffset(14, 104)
+    premiumStatus.Position = UDim2.fromOffset(14, 198)
     premiumStatus.Size = UDim2.new(1, -28, 0, 18)
     premiumStatus.TextXAlignment = Enum.TextXAlignment.Center
     premiumStatus.TextTruncate = Enum.TextTruncate.AtEnd
 
-    local function setPremiumStatus(textValue, isError, success)
+    setPremiumStatus = function(textValue, isError, success)
         if not premiumStatus.Parent then return end
         premiumStatus.Text = tostring(textValue or "")
-        premiumStatus.TextColor3 = isError and THEME.Danger or (success and THEME.Success or THEME.DimText)
+        local color = isError and THEME.Danger or (success and THEME.Success or THEME.DimText)
+        premiumStatus.TextColor3 = color
         accentTop.BackgroundColor3 = isError and THEME.Danger or (success and THEME.Success or THEME.Accent)
+        pulseStatus(premiumStatus, color)
     end
 
-    local buttonGap = 8
-    local buttonWidth = math.floor((windowWidth - (phoneLayout and 56 or 76) - buttonGap) / 2)
-    accessButton(premium, "JoinDiscord", "JOIN DISCORD", UDim2.fromOffset(14, 132), UDim2.fromOffset(buttonWidth, 32), function()
-        if busy then return end
-        local opened, copied = openOrCopy(DISCORD_INVITE)
-        if opened and copied then setPremiumStatus("Discord opened and invite copied.")
-        elseif opened then setPremiumStatus("Discord invite opened.")
-        elseif copied then setPremiumStatus("Discord invite copied.")
-        else setPremiumStatus("discord.gg/NFfs8G2WAz") end
-    end)
-
-    accessButton(premium, "PremiumPage", "PREMIUM PAGE", UDim2.fromOffset(14 + buttonWidth + buttonGap, 132), UDim2.fromOffset(buttonWidth, 32), function()
-        if busy then return end
-        local opened, copied = openOrCopy(PREMIUM_PAGE)
-        if opened then setPremiumStatus("Premium page opened.")
-        elseif copied then setPremiumStatus("Premium page link copied.")
-        else setPremiumStatus(PREMIUM_PAGE) end
-    end)
-
-    accessButton(premium, "Validate", "VALIDATE & LAUNCH PREMIUM", UDim2.new(0, 14, 0, 176), UDim2.new(1, -28, 0, 40), function()
+    accessButton(premium, "Validate", "VALIDATE & LAUNCH PREMIUM", UDim2.new(0, 14, 0, 222), UDim2.new(1, -28, 0, 40), function()
         if busy or cancelled then return end
         local key = normalizeKey(keyBox.Text)
         if key == "" then key = readSavedKey() end
         busy = true
+        setPremiumStatus("Validating Premium key...")
         task.spawn(function()
             local launched = launchPremium(key, function(textValue, isError)
                 setPremiumStatus(textValue, isError, false)
@@ -924,48 +1172,48 @@ local function runAccessGate(openPremiumImmediately)
             busy = false
             if launched and not cancelled then
                 setPremiumStatus("Premium loaded successfully.", false, true)
-                task.wait(0.20)
+                accessTween(card, 0.15, {GroupTransparency = 1})
+                accessTween(shadow, 0.15, {BackgroundTransparency = 1})
+                task.wait(0.16)
                 pcall(function() gui:Destroy() end)
             end
         end)
-    end)
+    end, {ActiveBorderColor3 = THEME.Success})
 
-    accessButton(premium, "ForgetKey", "FORGET SAVED KEY", UDim2.new(0, 14, 0, 226), UDim2.new(0.5, -18, 0, 30), function()
+    accessButton(premium, "ForgetKey", "FORGET SAVED KEY", UDim2.new(0, 14, 0, 272), UDim2.new(0.5, -18, 0, 30), function()
         if busy then return end
         clearSavedKey()
         keyBox.Text = ""
         setPremiumStatus("Saved Premium key removed.")
     end)
 
-    accessButton(premium, "Back", "BACK TO ACCESS", UDim2.new(0.5, 4, 0, 226), UDim2.new(0.5, -18, 0, 30), function()
+    accessButton(premium, "Back", "BACK TO ACCESS", UDim2.new(0.5, 4, 0, 272), UDim2.new(0.5, -18, 0, 30), function()
         if busy then return end
-        premium.Visible = false
-        chooser.Visible = true
-        titleLabel.Text = "PuckAFK Hub"
-        currentHeight = chooserHeight
         accentTop.BackgroundColor3 = THEME.Accent
-        accessTween(card, 0.16, {Size = UDim2.fromOffset(windowWidth, currentHeight)})
-        accessTween(shadow, 0.16, {Size = UDim2.fromOffset(windowWidth, currentHeight)})
+        switchPanel(premium, chooser, "PuckAFK Hub", chooserHeight, -1)
     end)
 
-    local securityLabel = accessLabel(premium, "Key validation: PuckAFK server  •  source delivered only after success", 9, THEME.DimText, 12)
-    securityLabel.Position = UDim2.fromOffset(14, 267)
+    local securityLabel = accessLabel(premium, "Secure server validation  •  source delivered only after success", 9, THEME.DimText, 12)
+    securityLabel.Position = UDim2.fromOffset(14, 312)
     securityLabel.Size = UDim2.new(1, -28, 0, 16)
     securityLabel.TextXAlignment = Enum.TextXAlignment.Center
     securityLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
     if phoneLayout then
-        securityLabel.Position = UDim2.fromOffset(14, 273)
+        securityLabel.Position = UDim2.fromOffset(14, 318)
     end
 
     card.Size = UDim2.fromOffset(windowWidth, currentHeight - 8)
     shadow.Size = UDim2.fromOffset(windowWidth, currentHeight - 8)
-    accessTween(card, 0.18, {GroupTransparency = 0, Size = UDim2.fromOffset(windowWidth, currentHeight)})
-    accessTween(shadow, 0.18, {Size = UDim2.fromOffset(windowWidth, currentHeight)})
+    accessTween(card, 0.26, {GroupTransparency = 0, Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(windowWidth, currentHeight)}, Enum.EasingStyle.Quart)
+    accessTween(shadow, 0.26, {BackgroundTransparency = 0.5, Position = UDim2.new(0.5, 4, 0.5, 4), Size = UDim2.fromOffset(windowWidth, currentHeight)}, Enum.EasingStyle.Quart)
+    accessTween(accentTop, 0.35, {BackgroundTransparency = 0.12}, Enum.EasingStyle.Sine)
 
     if openPremiumImmediately then
         chooser.Visible = false
+        chooser.GroupTransparency = 1
         premium.Visible = true
+        premium.GroupTransparency = 0
         titleLabel.Text = "PuckAFK Hub | Premium"
         currentHeight = premiumHeight
         card.Size = UDim2.fromOffset(windowWidth, premiumHeight)
