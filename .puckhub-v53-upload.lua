@@ -510,4 +510,298 @@ local function launchPremium(key, setStatus)
         slug = info.slug,
         executor = executorName(),
         script = info.name or info.slug,
-        placeId
+        placeId = tostring(game.PlaceId),
+        universeId = tostring(game.GameId),
+        jobId = tostring(game.JobId or ""),
+        robloxUserId = player and tostring(player.UserId) or "Unknown",
+        robloxUsername = player and tostring(player.Name) or "Unknown",
+    }
+
+    setStatus("Validating your PuckHub key…")
+    local okSource, source, reason = postPremiumSource(PREMIUM_API, payload)
+    if not okSource then
+        okSource, source, reason = postPremiumSource(PREMIUM_API_FALLBACK, payload)
+    end
+
+    if not okSource then
+        premiumBusy = false
+        setStatus("Premium key rejected: " .. tostring(reason or "validation failed"), true)
+        return false
+    end
+
+    setStatus("Key accepted. Launching Premium…")
+    ENV.PuckHubCurrentAccessMode = "premium"
+    ENV.PuckHubAccessMode = "premium"
+    ENV.PuckHubKey = key
+    saveKey(key)
+
+    local launched, runtimeError = launchSource(source, tostring(info.name or "Premium script"))
+    ENV.PuckHubAccessMode = nil
+    premiumBusy = false
+    if not launched then
+        setStatus(runtimeError, true)
+        return false
+    end
+
+    setStatus("Premium loaded successfully.")
+    return true
+end
+
+-- ============================================================================
+-- PuckAFK access gate v5.3
+-- Custom interface (not PuckUI) with Roblox image icons, responsive layout,
+-- animated cards, explicit remember-choice control, and compact Premium flow.
+-- ============================================================================
+
+local ACCESS_GUI_NAME = "PuckAFKAccessLoader"
+
+local THEME = {
+    Backdrop = Color3.fromRGB(4, 6, 10),
+    Main = Color3.fromRGB(11, 13, 18),
+    Main2 = Color3.fromRGB(15, 18, 25),
+    Surface = Color3.fromRGB(18, 22, 31),
+    Surface2 = Color3.fromRGB(23, 28, 39),
+    SurfaceHover = Color3.fromRGB(29, 35, 48),
+    Stroke = Color3.fromRGB(48, 57, 74),
+    StrokeSoft = Color3.fromRGB(34, 41, 55),
+    Text = Color3.fromRGB(235, 239, 248),
+    Muted = Color3.fromRGB(148, 158, 178),
+    Faint = Color3.fromRGB(91, 101, 122),
+    Accent = Color3.fromRGB(73, 132, 255),
+    Accent2 = Color3.fromRGB(109, 91, 255),
+    AccentSoft = Color3.fromRGB(24, 43, 80),
+    Premium = Color3.fromRGB(244, 196, 77),
+    PremiumSoft = Color3.fromRGB(55, 45, 21),
+    Success = Color3.fromRGB(83, 201, 126),
+    SuccessSoft = Color3.fromRGB(22, 53, 36),
+    Danger = Color3.fromRGB(239, 95, 105),
+    DangerSoft = Color3.fromRGB(61, 28, 34),
+    Discord = Color3.fromRGB(88, 101, 242),
+    DiscordSoft = Color3.fromRGB(31, 34, 62),
+}
+
+-- Real Roblox image assets. General controls use Lucide icon assets; Discord uses
+-- a dedicated Discord logo image asset rather than a shape approximation.
+local ICON = {
+    Discord = "rbxassetid://18977771125",
+    Crown = "rbxassetid://7733765398",
+    Gamepad = "rbxassetid://7733799795",
+    ShieldCheck = "rbxassetid://7734056411",
+    ExternalLink = "rbxassetid://7743866903",
+    Globe = "rbxassetid://7733954760",
+    Key = "rbxassetid://7733965118",
+    Trash = "rbxassetid://7743873772",
+    Back = "rbxassetid://7733717651",
+    Check = "rbxassetid://7733715400",
+    Lock = "rbxassetid://7733992528",
+    Loader = "rbxassetid://7733989869",
+    Close = "rbxassetid://7743878496",
+    Info = "rbxassetid://7733964719",
+    Gift = "rbxassetid://7733946818",
+}
+
+local function accessCreate(className, properties)
+    local object = Instance.new(className)
+    for key, value in pairs(properties or {}) do
+        object[key] = value
+    end
+    return object
+end
+
+local function accessTween(object, duration, properties, style, direction)
+    if not object or not object.Parent then return nil end
+    local tween = TweenService:Create(
+        object,
+        TweenInfo.new(duration or 0.14, style or Enum.EasingStyle.Quart, direction or Enum.EasingDirection.Out),
+        properties
+    )
+    tween:Play()
+    return tween
+end
+
+local function corner(parent, radius)
+    return accessCreate("UICorner", {CornerRadius = UDim.new(0, radius or 10), Parent = parent})
+end
+
+local function stroke(parent, color, transparency, thickness)
+    return accessCreate("UIStroke", {
+        Color = color or THEME.Stroke,
+        Transparency = transparency or 0,
+        Thickness = thickness or 1,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        Parent = parent,
+    })
+end
+
+local function label(parent, text, size, color, font, z)
+    return accessCreate("TextLabel", {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Text = tostring(text or ""),
+        TextColor3 = color or THEME.Text,
+        TextSize = size or 13,
+        Font = font or Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center,
+        ZIndex = z or 20,
+        Parent = parent,
+    })
+end
+
+local function image(parent, asset, position, size, color, z)
+    return accessCreate("ImageLabel", {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Image = asset,
+        ImageColor3 = color or THEME.Text,
+        Position = position,
+        Size = size,
+        ScaleType = Enum.ScaleType.Fit,
+        ZIndex = z or 20,
+        Parent = parent,
+    })
+end
+
+local function accessGuiParent(screenGui)
+    local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
+    local playerGui = player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", 10)
+    if playerGui then
+        local ok = pcall(function() screenGui.Parent = playerGui end)
+        if ok and screenGui.Parent == playerGui then return playerGui end
+    end
+    if type(gethui) == "function" then
+        local ok, target = pcall(gethui)
+        if ok and target then
+            local parented = pcall(function() screenGui.Parent = target end)
+            if parented then return target end
+        end
+    end
+    local ok = pcall(function() screenGui.Parent = CoreGui end)
+    if ok then return CoreGui end
+    return nil
+end
+
+local function destroyOldAccessGui()
+    local parents = {CoreGui}
+    local player = Players.LocalPlayer
+    if player then
+        local playerGui = player:FindFirstChildOfClass("PlayerGui")
+        if playerGui then table.insert(parents, playerGui) end
+    end
+    if type(gethui) == "function" then
+        local ok, target = pcall(gethui)
+        if ok and target then table.insert(parents, target) end
+    end
+    for _, parent in ipairs(parents) do
+        pcall(function()
+            local old = parent:FindFirstChild(ACCESS_GUI_NAME)
+            if old then old:Destroy() end
+        end)
+    end
+end
+
+local function makeIconButton(parent, config)
+    config = config or {}
+    local button = accessCreate("TextButton", {
+        Name = config.Name or "IconButton",
+        Position = config.Position or UDim2.fromOffset(0, 0),
+        Size = config.Size or UDim2.fromOffset(36, 36),
+        BackgroundColor3 = config.BackgroundColor3 or THEME.Surface,
+        BackgroundTransparency = config.BackgroundTransparency or 0,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Text = "",
+        ZIndex = config.ZIndex or 30,
+        Parent = parent,
+    })
+    corner(button, config.CornerRadius or 9)
+    local outline = stroke(button, config.StrokeColor3 or THEME.StrokeSoft, config.StrokeTransparency or 0, 1)
+    local icon = image(
+        button,
+        config.Icon or ICON.Info,
+        UDim2.fromScale(0.5, 0.5),
+        config.IconSize or UDim2.fromOffset(17, 17),
+        config.IconColor3 or THEME.Muted,
+        button.ZIndex + 1
+    )
+    icon.AnchorPoint = Vector2.new(0.5, 0.5)
+    local scale = accessCreate("UIScale", {Scale = 1, Parent = button})
+
+    button.MouseEnter:Connect(function()
+        accessTween(button, 0.12, {BackgroundColor3 = config.HoverColor3 or THEME.SurfaceHover})
+        accessTween(outline, 0.12, {Color = config.HoverStrokeColor3 or THEME.Stroke})
+        accessTween(icon, 0.12, {ImageColor3 = config.HoverIconColor3 or THEME.Text})
+        accessTween(scale, 0.12, {Scale = 1.04})
+    end)
+    button.MouseLeave:Connect(function()
+        accessTween(button, 0.12, {BackgroundColor3 = config.BackgroundColor3 or THEME.Surface})
+        accessTween(outline, 0.12, {Color = config.StrokeColor3 or THEME.StrokeSoft})
+        accessTween(icon, 0.12, {ImageColor3 = config.IconColor3 or THEME.Muted})
+        accessTween(scale, 0.12, {Scale = 1})
+    end)
+    button.MouseButton1Down:Connect(function() accessTween(scale, 0.06, {Scale = 0.94}) end)
+    button.MouseButton1Up:Connect(function() accessTween(scale, 0.08, {Scale = 1.04}) end)
+    button.Activated:Connect(function()
+        if config.Callback then config.Callback() end
+    end)
+    return button, icon
+end
+
+local function makeButton(parent, config)
+    config = config or {}
+    local base = config.BackgroundColor3 or THEME.Surface2
+    local hover = config.HoverColor3 or THEME.SurfaceHover
+    local button = accessCreate("TextButton", {
+        Name = config.Name or "Button",
+        Position = config.Position or UDim2.fromOffset(0, 0),
+        Size = config.Size or UDim2.new(1, 0, 0, 44),
+        BackgroundColor3 = base,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Text = "",
+        ZIndex = config.ZIndex or 25,
+        Parent = parent,
+    })
+    corner(button, config.CornerRadius or 11)
+    local outline = stroke(button, config.StrokeColor3 or THEME.StrokeSoft, config.StrokeTransparency or 0, 1)
+    local scale = accessCreate("UIScale", {Scale = 1, Parent = button})
+
+    local icon
+    if config.Icon then
+        icon = image(button, config.Icon, UDim2.fromOffset(14, 0), UDim2.fromOffset(config.IconPixels or 18, config.IconPixels or 18), config.IconColor3 or config.TextColor3 or THEME.Text, button.ZIndex + 1)
+        icon.AnchorPoint = Vector2.new(0, 0.5)
+        icon.Position = UDim2.new(0, 14, 0.5, 0)
+    end
+
+    local text = label(button, config.Text or "Button", config.TextSize or 12, config.TextColor3 or THEME.Text, config.Font or Enum.Font.GothamMedium, button.ZIndex + 1)
+    text.Position = config.Icon and UDim2.fromOffset(44, 0) or UDim2.fromOffset(14, 0)
+    text.Size = config.RightIcon and UDim2.new(1, config.Icon and -82 or -52, 1, 0) or UDim2.new(1, config.Icon and -58 or -28, 1, 0)
+    text.TextXAlignment = config.TextXAlignment or Enum.TextXAlignment.Left
+
+    local rightIcon
+    if config.RightIcon then
+        rightIcon = image(button, config.RightIcon, UDim2.new(1, -14, 0.5, 0), UDim2.fromOffset(16, 16), config.RightIconColor3 or THEME.Muted, button.ZIndex + 1)
+        rightIcon.AnchorPoint = Vector2.new(1, 0.5)
+    end
+
+    local function setHover(on)
+        accessTween(button, 0.12, {BackgroundColor3 = on and hover or base})
+        accessTween(outline, 0.12, {Color = on and (config.HoverStrokeColor3 or config.AccentColor3 or THEME.Stroke) or (config.StrokeColor3 or THEME.StrokeSoft)})
+        accessTween(scale, 0.12, {Scale = on and 1.012 or 1})
+        if icon then accessTween(icon, 0.12, {ImageColor3 = on and (config.HoverIconColor3 or config.AccentColor3 or config.IconColor3 or config.TextColor3 or THEME.Text) or (config.IconColor3 or config.TextColor3 or THEME.Text)}) end
+        if rightIcon then accessTween(rightIcon, 0.12, {ImageColor3 = on and THEME.Text or (config.RightIconColor3 or THEME.Muted)}) end
+    end
+    button.MouseEnter:Connect(function() setHover(true) end)
+    button.MouseLeave:Connect(function() setHover(false) end)
+    button.MouseButton1Down:Connect(function() accessTween(scale, 0.06, {Scale = 0.975}) end)
+    button.MouseButton1Up:Connect(function() accessTween(scale, 0.08, {Scale = 1.012}) end)
+    button.Activated:Connect(function()
+        accessTween(scale, 0.055, {Scale = 0.965})
+        task.delay(0.06, function() if scale.Parent then accessTween(scale, 0.10, {Scale = 1}) end end)
+        if config.Callback then config.Callback() end
+    end)
+    return button, text, icon, outline
+end
+
+local function makeStatus(parent, position, size)
+    local pill = accessCreate("Fr
