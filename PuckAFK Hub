@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.6 - Classic UI + Executor Link Compatibility
+    PuckAFK Hub | Universal Access Loader v5.7 - Classic UI + High Identity Link Bridge
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -10,14 +10,15 @@
 
     Premium keys are saved locally only after successful validation.
 
-    v5.6 release polish:
+    v5.7 release polish:
       - Preserves the exact classic PuckAFK access-loader layout and proportions.
-      - Adds targeted link-opening compatibility for Delta, Real, Synapse Z, Madium,
-        Potassium, Xeno, Nexomia.win, and Solara.
-      - Prioritizes executor-native URL helpers before Roblox browser/link services.
+      - Adds a guarded high-identity LinkingService bridge for executors that expose
+        getthreadidentity/setthreadidentity, including Real and Potassium.
+      - Tries both the executor game object and getrenv().game to avoid proxy-blocked services.
+      - Keeps executor-native URL helpers first, then elevated Roblox link/browser bridges.
+      - Restores the original thread identity after every elevated attempt.
       - Keeps real icons, Keep My Choice, animations, Premium validation, and key saving.
       - Never falls back to silently copying Discord or website links.
-      - Idempotent GUI cleanup and executor-safe fallbacks.
 ]]
 
 local ENV = (type(getgenv) == "function" and getgenv()) or _G
@@ -372,14 +373,161 @@ local function openWebsite(url, alternateUrl)
         end
     end
 
-    local function getService(name)
-        local ok, service = pcall(game.GetService, game, name)
-        if not ok or not service then return nil end
-        if type(cloneref) == "function" then
-            local cloneOk, cloned = pcall(cloneref, service)
-            if cloneOk and cloned then service = cloned end
+    local function maybeClone(instance)
+        if not instance then return nil end
+        local cloneRef = rawget(ENV, "cloneref") or rawget(_G, "cloneref")
+        if type(cloneRef) == "function" then
+            local cloneOk, cloned = pcall(cloneRef, instance)
+            if cloneOk and cloned then return cloned end
         end
-        return service
+        return instance
+    end
+
+    local gameRoots = {{value = game, label = "game"}}
+    if type(getrenv) == "function" then
+        local okRenv, renv = pcall(getrenv)
+        if okRenv and type(renv) == "table" then
+            local realGame = rawget(renv, "game")
+            if realGame and realGame ~= game then
+                table.insert(gameRoots, 1, {value = realGame, label = "getrenv().game"})
+            end
+        end
+    end
+
+    local function getServiceFrom(root, name)
+        if not root then return nil end
+        local ok, service = pcall(function()
+            local getter = root.GetService
+            return getter(root, name)
+        end)
+        if not ok or not service then return nil end
+        return maybeClone(service)
+    end
+
+    local function getIdentityFunctions()
+        local getterNames = {
+            "getthreadidentity", "get_thread_identity", "getidentity",
+            "getthreadcontext", "get_thread_context", "getthreadcaps",
+        }
+        local setterNames = {
+            "setthreadidentity", "set_thread_identity", "setidentity",
+            "setthreadcontext", "set_thread_context", "setthreadcaps",
+        }
+        local getter, setter, getterName, setterName
+        for _, name in ipairs(getterNames) do
+            local fn = rawget(ENV, name) or rawget(_G, name)
+            if type(fn) == "function" then
+                getter, getterName = fn, name
+                break
+            end
+        end
+        for _, name in ipairs(setterNames) do
+            local fn = rawget(ENV, name) or rawget(_G, name)
+            if type(fn) == "function" then
+                setter, setterName = fn, name
+                break
+            end
+        end
+        return getter, setter, getterName, setterName
+    end
+
+    local function tryProtectedServices(target, rootEntry, prefix)
+        local root = rootEntry.value
+        local rootLabel = rootEntry.label
+
+        local linking = getServiceFrom(root, "LinkingService")
+        if linking then
+            local ok, result = pcall(function()
+                local fn = linking.OpenUrl
+                return fn(linking, target)
+            end)
+            if ok and result == true then
+                return true, prefix .. rootLabel .. ".LinkingService.OpenUrl"
+            end
+            ok, result = pcall(function() return linking:OpenUrl(target) end)
+            if ok and result == true then
+                return true, prefix .. rootLabel .. ".LinkingService:OpenUrl"
+            end
+        end
+
+        local guiService = getServiceFrom(root, "GuiService")
+        if guiService then
+            local ok = pcall(function()
+                local fn = guiService.OpenBrowserWindow
+                return fn(guiService, target)
+            end)
+            if ok then return true, prefix .. rootLabel .. ".GuiService.OpenBrowserWindow" end
+
+            ok = pcall(function()
+                local fn = guiService.OpenNativeOverlay
+                return fn(guiService, "PuckAFK", target)
+            end)
+            if ok then return true, prefix .. rootLabel .. ".GuiService.OpenNativeOverlay" end
+        end
+
+        local browserService = getServiceFrom(root, "BrowserService")
+        if browserService then
+            local ok = pcall(function()
+                local fn = browserService.OpenBrowserWindow
+                return fn(browserService, target)
+            end)
+            if ok then return true, prefix .. rootLabel .. ".BrowserService.OpenBrowserWindow" end
+
+            ok = pcall(function()
+                local fn = browserService.OpenNativeOverlay
+                return fn(browserService, "PuckAFK", target)
+            end)
+            if ok then return true, prefix .. rootLabel .. ".BrowserService.OpenNativeOverlay" end
+        end
+
+        return false
+    end
+
+    for _, target in ipairs(urls) do
+        for _, rootEntry in ipairs(gameRoots) do
+            local okOpen, via = tryProtectedServices(target, rootEntry, "")
+            if okOpen then return true, via end
+        end
+    end
+
+    local getIdentity, setIdentity, getIdentityName, setIdentityName = getIdentityFunctions()
+    if getIdentity and setIdentity then
+        local oldIdentity
+        local gotOldIdentity = pcall(function() oldIdentity = getIdentity() end)
+
+        local identityOrder = {8, 12, 7, 6, 5, 3}
+        local seenIdentity = {}
+        for _, identity in ipairs(identityOrder) do
+            if not seenIdentity[identity] then
+                seenIdentity[identity] = true
+                local raised = pcall(setIdentity, identity)
+                if raised then
+                    for _, target in ipairs(urls) do
+                        for _, rootEntry in ipairs(gameRoots) do
+                            local okOpen, via = tryProtectedServices(
+                                target,
+                                rootEntry,
+                                "identity-" .. tostring(identity) .. "/"
+                            )
+                            if okOpen then
+                                if gotOldIdentity and oldIdentity ~= nil then
+                                    pcall(setIdentity, oldIdentity)
+                                end
+                                return true, via .. " via " .. tostring(setIdentityName)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if gotOldIdentity and oldIdentity ~= nil then
+            pcall(setIdentity, oldIdentity)
+        end
+    end
+
+    local function getService(name)
+        return getServiceFrom(game, name)
     end
 
     for _, target in ipairs(urls) do
@@ -952,7 +1100,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     local currentHeight = chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.6.0"
+    ENV.PuckHubLoaderVersion = "5.7.0"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
@@ -1379,7 +1527,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
         if opened then
             setPremiumStatus("PuckAFK Discord opened.", false, true)
         else
-            setPremiumStatus("Could not open externally on " .. executorName() .. ".", true)
+            setPremiumStatus("External link bridge unavailable on " .. executorName() .. ".", true)
         end
     end)
 
@@ -1390,7 +1538,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
         if opened then
             setPremiumStatus("Premium website opened.", false, true)
         else
-            setPremiumStatus("Could not open externally on " .. executorName() .. ".", true)
+            setPremiumStatus("External link bridge unavailable on " .. executorName() .. ".", true)
         end
     end, {ActiveBorderColor3 = THEME.Accent})
     accessIcon(premiumPageButton, ICON.Globe, UDim2.fromOffset(10, 7), UDim2.fromOffset(16, 16), THEME.DimText, 24)
