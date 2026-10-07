@@ -804,4 +804,300 @@ local function makeButton(parent, config)
 end
 
 local function makeStatus(parent, position, size)
-    local pill = accessCreate("Fr
+    local pill = accessCreate("Frame", {
+        Position = position,
+        Size = size,
+        BackgroundColor3 = THEME.Surface,
+        BorderSizePixel = 0,
+        ZIndex = 28,
+        Parent = parent,
+    })
+    corner(pill, 9)
+    local outline = stroke(pill, THEME.StrokeSoft, 0.15, 1)
+    local dot = accessCreate("Frame", {
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 12, 0.5, 0),
+        Size = UDim2.fromOffset(7, 7),
+        BackgroundColor3 = THEME.Faint,
+        BorderSizePixel = 0,
+        ZIndex = 29,
+        Parent = pill,
+    })
+    corner(dot, 99)
+    local text = label(pill, "Ready", 10, THEME.Muted, Enum.Font.Gotham, 29)
+    text.Position = UDim2.fromOffset(28, 0)
+    text.Size = UDim2.new(1, -40, 1, 0)
+    text.TextTruncate = Enum.TextTruncate.AtEnd
+
+    local function setStatus(message, isError, isSuccess)
+        local color = isError and THEME.Danger or (isSuccess and THEME.Success or THEME.Accent)
+        local soft = isError and THEME.DangerSoft or (isSuccess and THEME.SuccessSoft or THEME.AccentSoft)
+        text.Text = tostring(message or "")
+        text.TextColor3 = isError and Color3.fromRGB(255, 179, 185) or (isSuccess and Color3.fromRGB(175, 246, 199) or THEME.Muted)
+        accessTween(pill, 0.16, {BackgroundColor3 = soft})
+        accessTween(dot, 0.16, {BackgroundColor3 = color})
+        accessTween(outline, 0.16, {Color = color, Transparency = 0.35})
+        text.TextTransparency = 0.25
+        accessTween(text, 0.16, {TextTransparency = 0})
+        task.delay(1.2, function()
+            if pill.Parent and not isError and not isSuccess then
+                accessTween(pill, 0.22, {BackgroundColor3 = THEME.Surface})
+                accessTween(outline, 0.22, {Color = THEME.StrokeSoft, Transparency = 0.15})
+            end
+        end)
+    end
+
+    return pill, text, setStatus
+end
+
+local function makeToggle(parent, position, width, initial, callback)
+    local enabled = initial and true or false
+    local button = accessCreate("TextButton", {
+        Position = position,
+        Size = UDim2.fromOffset(width, 42),
+        BackgroundColor3 = THEME.Surface,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Text = "",
+        ZIndex = 25,
+        Parent = parent,
+    })
+    corner(button, 10)
+    local outline = stroke(button, THEME.StrokeSoft, 0, 1)
+
+    local title = label(button, "Remember my choice", 11, THEME.Text, Enum.Font.GothamMedium, 27)
+    title.Position = UDim2.fromOffset(13, 2)
+    title.Size = UDim2.new(1, -74, 0, 22)
+    local sub = label(button, "Skip repeated setup next time", 9, THEME.Faint, Enum.Font.Gotham, 27)
+    sub.Position = UDim2.fromOffset(13, 20)
+    sub.Size = UDim2.new(1, -74, 0, 16)
+
+    local track = accessCreate("Frame", {
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, -12, 0.5, 0),
+        Size = UDim2.fromOffset(39, 22),
+        BackgroundColor3 = THEME.StrokeSoft,
+        BorderSizePixel = 0,
+        ZIndex = 27,
+        Parent = button,
+    })
+    corner(track, 99)
+    local knob = accessCreate("Frame", {
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 3, 0.5, 0),
+        Size = UDim2.fromOffset(16, 16),
+        BackgroundColor3 = THEME.Muted,
+        BorderSizePixel = 0,
+        ZIndex = 28,
+        Parent = track,
+    })
+    corner(knob, 99)
+    local check = image(knob, ICON.Check, UDim2.fromScale(0.5, 0.5), UDim2.fromOffset(11, 11), Color3.new(1, 1, 1), 29)
+    check.AnchorPoint = Vector2.new(0.5, 0.5)
+    check.ImageTransparency = 1
+
+    local function render(animated)
+        local duration = animated and 0.16 or 0
+        accessTween(track, duration, {BackgroundColor3 = enabled and THEME.Accent or THEME.StrokeSoft})
+        accessTween(knob, duration, {
+            Position = enabled and UDim2.new(1, -19, 0.5, 0) or UDim2.new(0, 3, 0.5, 0),
+            BackgroundColor3 = enabled and Color3.new(1, 1, 1) or THEME.Muted,
+        })
+        accessTween(check, duration, {ImageTransparency = enabled and 0 or 1, ImageColor3 = THEME.Accent})
+        accessTween(outline, duration, {Color = enabled and THEME.Accent or THEME.StrokeSoft, Transparency = enabled and 0.45 or 0})
+    end
+    render(false)
+
+    button.MouseEnter:Connect(function() accessTween(button, 0.12, {BackgroundColor3 = THEME.SurfaceHover}) end)
+    button.MouseLeave:Connect(function() accessTween(button, 0.12, {BackgroundColor3 = THEME.Surface}) end)
+    button.Activated:Connect(function()
+        enabled = not enabled
+        render(true)
+        if callback then callback(enabled) end
+    end)
+
+    return button, function(value)
+        enabled = value and true or false
+        render(true)
+    end, function() return enabled end
+end
+
+local function makeAccessCard(parent, config)
+    local card = accessCreate("TextButton", {
+        Name = config.Name or "AccessCard",
+        Position = config.Position,
+        Size = config.Size,
+        BackgroundColor3 = config.BackgroundColor3 or THEME.Surface,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Text = "",
+        ZIndex = 20,
+        Parent = parent,
+    })
+    corner(card, 14)
+    local outline = stroke(card, config.StrokeColor3 or THEME.StrokeSoft, 0, 1)
+    local scale = accessCreate("UIScale", {Scale = 1, Parent = card})
+
+    local iconBack = accessCreate("Frame", {
+        Position = UDim2.fromOffset(14, 14),
+        Size = UDim2.fromOffset(38, 38),
+        BackgroundColor3 = config.IconBackground or THEME.AccentSoft,
+        BorderSizePixel = 0,
+        ZIndex = 22,
+        Parent = card,
+    })
+    corner(iconBack, 10)
+    local icon = image(iconBack, config.Icon, UDim2.fromScale(0.5, 0.5), UDim2.fromOffset(21, 21), config.AccentColor or THEME.Accent, 23)
+    icon.AnchorPoint = Vector2.new(0.5, 0.5)
+
+    local tag = label(card, config.Tag or "ACCESS", 9, config.AccentColor or THEME.Accent, Enum.Font.GothamBold, 23)
+    tag.Position = UDim2.fromOffset(64, 12)
+    tag.Size = UDim2.new(1, -78, 0, 16)
+    local title = label(card, config.Title or "Access", 18, THEME.Text, Enum.Font.GothamBold, 23)
+    title.Position = UDim2.fromOffset(64, 27)
+    title.Size = UDim2.new(1, -78, 0, 25)
+    local desc = label(card, config.Description or "", 10, THEME.Muted, Enum.Font.Gotham, 23)
+    desc.Position = UDim2.fromOffset(14, 61)
+    desc.Size = UDim2.new(1, -28, 0, 34)
+    desc.TextWrapped = true
+    desc.TextYAlignment = Enum.TextYAlignment.Top
+
+    local action = accessCreate("Frame", {
+        AnchorPoint = Vector2.new(0, 1),
+        Position = UDim2.new(0, 14, 1, -13),
+        Size = UDim2.new(1, -28, 0, 33),
+        BackgroundColor3 = config.ActionColor or THEME.Accent,
+        BorderSizePixel = 0,
+        ZIndex = 22,
+        Parent = card,
+    })
+    corner(action, 9)
+    local actionText = label(action, config.ActionText or "Continue", 11, config.ActionTextColor or Color3.new(1, 1, 1), Enum.Font.GothamBold, 23)
+    actionText.Size = UDim2.new(1, -44, 1, 0)
+    actionText.Position = UDim2.fromOffset(13, 0)
+    local arrow = image(action, ICON.ExternalLink, UDim2.new(1, -13, 0.5, 0), UDim2.fromOffset(15, 15), config.ActionTextColor or Color3.new(1, 1, 1), 23)
+    arrow.AnchorPoint = Vector2.new(1, 0.5)
+
+    card.MouseEnter:Connect(function()
+        accessTween(card, 0.14, {BackgroundColor3 = config.HoverColor3 or THEME.SurfaceHover})
+        accessTween(outline, 0.14, {Color = config.AccentColor or THEME.Accent, Transparency = 0.25})
+        accessTween(scale, 0.14, {Scale = 1.015})
+        accessTween(action, 0.14, {BackgroundColor3 = config.ActionHoverColor or config.ActionColor or THEME.Accent})
+    end)
+    card.MouseLeave:Connect(function()
+        accessTween(card, 0.14, {BackgroundColor3 = config.BackgroundColor3 or THEME.Surface})
+        accessTween(outline, 0.14, {Color = config.StrokeColor3 or THEME.StrokeSoft, Transparency = 0})
+        accessTween(scale, 0.14, {Scale = 1})
+        accessTween(action, 0.14, {BackgroundColor3 = config.ActionColor or THEME.Accent})
+    end)
+    card.MouseButton1Down:Connect(function() accessTween(scale, 0.06, {Scale = 0.98}) end)
+    card.MouseButton1Up:Connect(function() accessTween(scale, 0.08, {Scale = 1.015}) end)
+    card.Activated:Connect(function() if config.Callback then config.Callback() end end)
+    return card
+end
+
+local function runAccessGate(openPremiumImmediately, rememberedChoice)
+    destroyOldAccessGui()
+
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    local phoneLayout = UserInputService.TouchEnabled and math.min(viewport.X, viewport.Y) <= 720
+    local windowWidth = phoneLayout and 360 or 550
+    local chooserHeight = phoneLayout and 520 or 390
+    local premiumHeight = phoneLayout and 565 or 455
+    local currentHeight = openPremiumImmediately and premiumHeight or chooserHeight
+    local cancelled = false
+    local busy = false
+    ENV.PuckHubLoaderVersion = "5.3.0"
+
+    local fitScale = math.min((viewport.X - 20) / windowWidth, (viewport.Y - 20) / premiumHeight)
+    local uiScaleValue = math.max(0.68, math.min(1, fitScale))
+
+    local gui = accessCreate("ScreenGui", {
+        Name = ACCESS_GUI_NAME,
+        ResetOnSpawn = false,
+        IgnoreGuiInset = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        DisplayOrder = 10001,
+    })
+    accessGuiParent(gui)
+
+    local dim = accessCreate("Frame", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = THEME.Backdrop,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 1,
+        Parent = gui,
+    })
+
+    local shell = accessCreate("CanvasGroup", {
+        Name = "Shell",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 14),
+        Size = UDim2.fromOffset(windowWidth, currentHeight - 12),
+        BackgroundColor3 = THEME.Main,
+        BorderSizePixel = 0,
+        GroupTransparency = 1,
+        Active = true,
+        ZIndex = 10,
+        Parent = gui,
+    })
+    corner(shell, 16)
+    local shellStroke = stroke(shell, THEME.Stroke, 0.1, 1)
+    local shellScale = accessCreate("UIScale", {Scale = uiScaleValue, Parent = shell})
+
+    accessCreate("UIGradient", {
+        Rotation = 120,
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, THEME.Main2),
+            ColorSequenceKeypoint.new(0.55, THEME.Main),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 14, 23)),
+        }),
+        Parent = shell,
+    })
+
+    local glow = accessCreate("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0, 0),
+        Size = UDim2.new(0.62, 0, 0, 2),
+        BackgroundColor3 = THEME.Accent,
+        BackgroundTransparency = 0.05,
+        BorderSizePixel = 0,
+        ZIndex = 13,
+        Parent = shell,
+    })
+    corner(glow, 99)
+    accessCreate("UIGradient", {
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.25, 0),
+            NumberSequenceKeypoint.new(0.75, 0),
+            NumberSequenceKeypoint.new(1, 1),
+        }),
+        Parent = glow,
+    })
+
+    local topbar = accessCreate("Frame", {
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.new(1, 0, 0, 50),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 15,
+        Parent = shell,
+    })
+
+    local brandIconBack = accessCreate("Frame", {
+        Position = UDim2.fromOffset(14, 11),
+        Size = UDim2.fromOffset(28, 28),
+        BackgroundColor3 = THEME.AccentSoft,
+        BorderSizePixel = 0,
+        ZIndex = 16,
+        Parent = topbar,
+    })
+    corner(brandIconBack, 8)
+    local brandIcon = image(brandIconBack, ICON.Gamepad, UDim2.fromScale(0.5, 0.5), UDim2.fromOffset(17, 17), THEME.Accent, 17)
+    brandIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+
+    local brand = label(topbar, "PuckAFK Hub", 13, THEME.Text, Enum.Font.GothamBold, 17)
+    brand.Position = UDim2.fromOffset(51
