@@ -1391,4 +1391,265 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     })
     corner(discordCard, 13)
     local discordStroke = stroke(discordCard, Color3.fromRGB(65, 71, 130), 0.1, 1)
-    local discordSc
+    local discordScale = accessCreate("UIScale", {Scale = 1, Parent = discordCard})
+    local discordLogoBack = accessCreate("Frame", {
+        Position = UDim2.fromOffset(12, 12),
+        Size = UDim2.fromOffset(44, 44),
+        BackgroundColor3 = THEME.Discord,
+        BorderSizePixel = 0,
+        ZIndex = 25,
+        Parent = discordCard,
+    })
+    corner(discordLogoBack, 12)
+    local discordLogo = image(discordLogoBack, ICON.Discord, UDim2.fromScale(0.5, 0.5), UDim2.fromOffset(28, 28), Color3.new(1, 1, 1), 26)
+    discordLogo.AnchorPoint = Vector2.new(0.5, 0.5)
+    local discordTitle = label(discordCard, "PuckAFK Discord", 13, THEME.Text, Enum.Font.GothamBold, 26)
+    discordTitle.Position = UDim2.fromOffset(69, 10)
+    discordTitle.Size = UDim2.new(1, -123, 0, 22)
+    local discordSub = label(discordCard, "Get your Premium key and account help", 9, Color3.fromRGB(174, 179, 218), Enum.Font.Gotham, 26)
+    discordSub.Position = UDim2.fromOffset(69, 31)
+    discordSub.Size = UDim2.new(1, -123, 0, 19)
+    local discordOpen = image(discordCard, ICON.ExternalLink, UDim2.new(1, -19, 0.5, 0), UDim2.fromOffset(18, 18), Color3.fromRGB(189, 194, 231), 26)
+    discordOpen.AnchorPoint = Vector2.new(0.5, 0.5)
+
+    discordCard.MouseEnter:Connect(function()
+        accessTween(discordCard, 0.13, {BackgroundColor3 = Color3.fromRGB(39, 43, 78)})
+        accessTween(discordStroke, 0.13, {Color = THEME.Discord, Transparency = 0.15})
+        accessTween(discordScale, 0.13, {Scale = 1.01})
+        accessTween(discordOpen, 0.13, {ImageColor3 = Color3.new(1, 1, 1)})
+    end)
+    discordCard.MouseLeave:Connect(function()
+        accessTween(discordCard, 0.13, {BackgroundColor3 = THEME.DiscordSoft})
+        accessTween(discordStroke, 0.13, {Color = Color3.fromRGB(65, 71, 130), Transparency = 0.1})
+        accessTween(discordScale, 0.13, {Scale = 1})
+        accessTween(discordOpen, 0.13, {ImageColor3 = Color3.fromRGB(189, 194, 231)})
+    end)
+    discordCard.Activated:Connect(function()
+        if busy then return end
+        setPremiumStatus("Opening Discord…", false, false)
+        local opened, method = openWebsite(DISCORD_INVITE)
+        if opened then
+            setPremiumStatus("Discord opened in your browser.", false, true)
+        else
+            setPremiumStatus("Discord could not be opened automatically. Try again after your executor is fully attached.", true, false)
+        end
+    end)
+
+    local siteY = 134
+    local websiteButton = makeButton(premium, {
+        Name = "PremiumWebsite",
+        Position = UDim2.fromOffset(0, siteY),
+        Size = UDim2.new(1, 0, 0, 40),
+        Icon = ICON.Globe,
+        IconColor3 = THEME.Accent,
+        Text = "Open Premium website",
+        TextSize = 11,
+        RightIcon = ICON.ExternalLink,
+        AccentColor3 = THEME.Accent,
+        Callback = function()
+            if busy then return end
+            setPremiumStatus("Opening Premium website…", false, false)
+            local opened, method = openWebsite(PREMIUM_PAGE)
+            if opened then
+                setPremiumStatus("Premium website opened in your browser.", false, true)
+            else
+                setPremiumStatus("The Premium website could not be opened automatically. Try again after your executor is fully attached.", true, false)
+            end
+        end,
+    })
+
+    local keyY = 183
+    local keyHolder = accessCreate("Frame", {
+        Position = UDim2.fromOffset(0, keyY),
+        Size = UDim2.new(1, 0, 0, 48),
+        BackgroundColor3 = THEME.Surface,
+        BorderSizePixel = 0,
+        ZIndex = 24,
+        Parent = premium,
+    })
+    corner(keyHolder, 11)
+    local keyStroke = stroke(keyHolder, THEME.StrokeSoft, 0, 1)
+    local keyIcon = image(keyHolder, ICON.Key, UDim2.fromOffset(14, 15), UDim2.fromOffset(18, 18), THEME.Muted, 26)
+    local savedKey = readSavedKey()
+    local keyBox = accessCreate("TextBox", {
+        Name = "PremiumKey",
+        Position = UDim2.fromOffset(43, 0),
+        Size = UDim2.new(1, -55, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClearTextOnFocus = false,
+        Font = Enum.Font.GothamMedium,
+        Text = savedKey,
+        PlaceholderText = "PH-XXXXX-XXXXX-XXXXX-XXXXX",
+        PlaceholderColor3 = THEME.Faint,
+        TextColor3 = THEME.Text,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 27,
+        Parent = keyHolder,
+    })
+    keyBox.Focused:Connect(function()
+        accessTween(keyHolder, 0.13, {BackgroundColor3 = THEME.Surface2})
+        accessTween(keyStroke, 0.13, {Color = THEME.Accent, Transparency = 0.15})
+        accessTween(keyIcon, 0.13, {ImageColor3 = THEME.Accent})
+    end)
+    keyBox.FocusLost:Connect(function()
+        accessTween(keyHolder, 0.13, {BackgroundColor3 = THEME.Surface})
+        accessTween(keyStroke, 0.13, {Color = THEME.StrokeSoft, Transparency = 0})
+        accessTween(keyIcon, 0.13, {ImageColor3 = THEME.Muted})
+    end)
+
+    local validateY = 241
+    local validateButton, validateText, validateIcon = makeButton(premium, {
+        Name = "Validate",
+        Position = UDim2.fromOffset(0, validateY),
+        Size = UDim2.new(1, 0, 0, 48),
+        Icon = ICON.ShieldCheck,
+        IconColor3 = Color3.new(1, 1, 1),
+        Text = "VALIDATE & LAUNCH PREMIUM",
+        TextSize = 11,
+        TextColor3 = Color3.new(1, 1, 1),
+        BackgroundColor3 = Color3.fromRGB(45, 103, 221),
+        HoverColor3 = Color3.fromRGB(61, 120, 244),
+        StrokeColor3 = Color3.fromRGB(73, 132, 255),
+        StrokeTransparency = 0.25,
+        HoverStrokeColor3 = Color3.fromRGB(126, 164, 255),
+        Callback = function()
+            if busy or cancelled then return end
+            local key = normalizeKey(keyBox.Text)
+            if key == "" then key = readSavedKey() end
+            busy = true
+            setPremiumStatus("Validating your Premium key…", false, false)
+            validateText.Text = "VALIDATING…"
+            validateIcon.Image = ICON.Loader
+            local spin = TweenService:Create(validateIcon, TweenInfo.new(0.7, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), {Rotation = 360})
+            spin:Play()
+            task.spawn(function()
+                local launched = launchPremium(key, function(message, isError)
+                    setPremiumStatus(message, isError, false)
+                end)
+                busy = false
+                spin:Cancel()
+                validateIcon.Rotation = 0
+                validateIcon.Image = ICON.ShieldCheck
+                validateText.Text = "VALIDATE & LAUNCH PREMIUM"
+                if launched and not cancelled then
+                    setPremiumStatus("Premium loaded successfully.", false, true)
+                    task.wait(0.14)
+                    closeAnimated()
+                end
+            end)
+        end,
+    })
+
+    local secondaryY = 299
+    makeButton(premium, {
+        Name = "ForgetKey",
+        Position = UDim2.fromOffset(0, secondaryY),
+        Size = UDim2.new(0.5, -5, 0, 38),
+        Icon = ICON.Trash,
+        IconColor3 = THEME.Danger,
+        Text = "Forget saved key",
+        TextSize = 10,
+        Callback = function()
+            if busy then return end
+            clearSavedKey()
+            keyBox.Text = ""
+            setPremiumStatus("Saved Premium key removed.", false, true)
+        end,
+    })
+
+    makeButton(premium, {
+        Name = "BackToAccess",
+        Position = UDim2.new(0.5, 5, 0, secondaryY),
+        Size = UDim2.new(0.5, -5, 0, 38),
+        Icon = ICON.Back,
+        IconColor3 = THEME.Muted,
+        Text = "Back to access",
+        TextSize = 10,
+        Callback = function()
+            if busy then return end
+            switchPanel(premium, chooser, chooserHeight, -1)
+        end,
+    })
+
+    local securityY = 346
+    local security = accessCreate("Frame", {
+        Position = UDim2.fromOffset(0, securityY),
+        Size = UDim2.new(1, 0, 0, phoneLayout and 75 or 50),
+        BackgroundColor3 = Color3.fromRGB(15, 22, 25),
+        BorderSizePixel = 0,
+        ZIndex = 22,
+        Parent = premium,
+    })
+    corner(security, 10)
+    stroke(security, Color3.fromRGB(35, 61, 54), 0.25, 1)
+    local securityIcon = image(security, ICON.Lock, UDim2.fromOffset(13, 13), UDim2.fromOffset(16, 16), THEME.Success, 24)
+    local securityTitle = label(security, "Server-side validation", 10, Color3.fromRGB(174, 224, 191), Enum.Font.GothamBold, 24)
+    securityTitle.Position = UDim2.fromOffset(39, 6)
+    securityTitle.Size = UDim2.new(1, -51, 0, 20)
+    local securityText = label(security, "Premium source is delivered only after your key is accepted.", 9, Color3.fromRGB(117, 153, 132), Enum.Font.Gotham, 24)
+    securityText.Position = UDim2.fromOffset(39, 23)
+    securityText.Size = UDim2.new(1, -51, phoneLayout and 0 or 0, phoneLayout and 44 or 20)
+    securityText.TextWrapped = true
+    securityText.TextYAlignment = Enum.TextYAlignment.Top
+
+    if savedKey ~= "" then
+        setPremiumStatus("Saved Premium key detected — ready to validate.", false, true)
+    else
+        setPremiumStatus("Enter your Premium key to continue.", false, false)
+    end
+
+    -- Entrance animation.
+    accessTween(dim, 0.20, {BackgroundTransparency = 0.42})
+    accessTween(shell, 0.28, {GroupTransparency = 0, Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(windowWidth, currentHeight)}, Enum.EasingStyle.Quart)
+    accessTween(shellScale, 0.28, {Scale = uiScaleValue}, Enum.EasingStyle.Back)
+    accessTween(shellStroke, 0.28, {Transparency = 0.1})
+
+    -- Saved-choice countdown remains visible and cancellable instead of silently
+    -- launching a remembered tier.
+    if rememberedChoice ~= "" and not openPremiumImmediately then
+        local token = savedCountdownToken + 1
+        savedCountdownToken = token
+        local display = rememberedChoice == "free" and "Free" or "Premium"
+        task.spawn(function()
+            for seconds = 3, 1, -1 do
+                if cancelled or busy or token ~= savedCountdownToken or not rememberChoice then return end
+                setChooserStatus("Saved choice: " .. display .. " — continuing in " .. tostring(seconds) .. "s. Click any option to change it.", false, false)
+                task.wait(1)
+            end
+            if cancelled or busy or token ~= savedCountdownToken or not rememberChoice then return end
+            if rememberedChoice == "free" then chooseFree() else choosePremium() end
+        end)
+    end
+end
+
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+-- Explicit requests now use PuckHubRequestedAccessMode. PuckHubAccessMode is runtime
+-- state only and is cleared so a previous Free launch can never trap later executions.
+local requestedMode = normalizeChoice(rawget(ENV, "PuckHubRequestedAccessMode"))
+local legacyMode = normalizeChoice(rawget(ENV, "PuckHubAccessMode"))
+ENV.PuckHubRequestedAccessMode = nil
+ENV.PuckHubAccessMode = nil
+
+-- Backward compatibility for older Premium purchase snippets: accept the old Premium
+-- mode only when a Premium key is present. Deliberately ignore legacy Free mode.
+if requestedMode == "" and legacyMode == "premium" and readSavedKey() ~= "" then
+    requestedMode = "premium"
+end
+
+if requestedMode == "free" then
+    return launchFree()
+elseif requestedMode == "premium" then
+    local key = readSavedKey()
+    if key ~= "" then
+        local silentStatus = function(textValue, isError)
+            if isError then warn("[PuckAFK Hub] " .. tostring(textValue)) else print("[PuckAFK Hub] " .. tostring(textValue)) end
+        end
+        if launchPremium(key, silentStatus) then return end
+    end
+    return runAccessGate(true, readSavedChoice())
+end
+
+return runAccessGate(false, readSavedChoice())
