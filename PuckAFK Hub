@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.8 - Classic UI + Clipboard Links
+    PuckAFK Hub | Universal Access Loader v5.9 - Classic UI + Premium Error Reporting
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -10,15 +10,11 @@
 
     Premium keys are saved locally only after successful validation.
 
-    v5.7 release polish:
-      - Preserves the exact classic PuckAFK access-loader layout and proportions.
-      - Adds a guarded high-identity LinkingService bridge for executors that expose
-        getthreadidentity/setthreadidentity, including Real and Potassium.
-      - Tries both the executor game object and getrenv().game to avoid proxy-blocked services.
-      - Keeps executor-native URL helpers first, then elevated Roblox link/browser bridges.
-      - Restores the original thread identity after every elevated attempt.
-      - Keeps real icons, Keep My Choice, animations, Premium validation, and key saving.
-      - Never falls back to silently copying Discord or website links.
+    v5.9 release polish:
+      - Preserves the classic PuckAFK UI and clipboard-only Discord/Premium links.
+      - Keeps real icons, Remember Choice, animations, and saved keys.
+      - Distinguishes invalid keys from Premium source-delivery failures.
+      - No browser opening or public Premium source URL.
 ]]
 
 local ENV = (type(getgenv) == "function" and getgenv()) or _G
@@ -377,7 +373,7 @@ local function postPremiumSource(base, payload)
 
     local detail = decode(body)
     local message = detail and (detail.message or detail.error or detail.code)
-    return false, status, tostring(message or ("HTTP " .. tostring(status)))
+    return false, status, tostring(message or ("HTTP " .. tostring(status))), detail and detail.code
 end
 
 local premiumBusy = false
@@ -434,14 +430,30 @@ local function launchPremium(key, setStatus)
     }
 
     setStatus("Validating your PuckHub key…")
-    local okSource, source, reason = postPremiumSource(PREMIUM_API, payload)
-    if not okSource then
-        okSource, source, reason = postPremiumSource(PREMIUM_API_FALLBACK, payload)
+    local okSource, source, reason, errorCode = postPremiumSource(PREMIUM_API, payload)
+    -- Retry alternate origin only for gateway/transport errors, never a rejected key.
+    if not okSource and (source == 0 or source == 500 or source == 502 or source == 503 or source == 504) then
+        local fallbackOk, fallbackSource, fallbackReason, fallbackCode = postPremiumSource(PREMIUM_API_FALLBACK, payload)
+        if fallbackOk then
+            okSource, source, reason, errorCode = fallbackOk, fallbackSource, fallbackReason, fallbackCode
+        else
+            source, reason, errorCode = fallbackSource, fallbackReason, fallbackCode
+        end
     end
 
     if not okSource then
         premiumBusy = false
-        setStatus("Premium key rejected: " .. tostring(reason or "validation failed"), true)
+        local code = tostring(errorCode or "")
+        local http = tonumber(source) or 0
+        if code:find("GITHUB_", 1, true) == 1 or code:find("SOURCE_", 1, true) == 1 then
+            setStatus("Key OK; Premium source unavailable (" .. code .. "). Contact staff.", true)
+        elseif http == 401 or http == 403 then
+            setStatus("Premium key rejected: " .. tostring(reason or "invalid or expired key"), true)
+        elseif http == 404 and code == "ROUTE_MISMATCH" then
+            setStatus("Premium is not registered for this game yet.", true)
+        else
+            setStatus("Premium delivery error (HTTP " .. tostring(http) .. "). Key may be valid; contact staff.", true)
+        end
         return false
     end
 
@@ -788,7 +800,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     local currentHeight = chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.8.0"
+    ENV.PuckHubLoaderVersion = "5.9.0"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
