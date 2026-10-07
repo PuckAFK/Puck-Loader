@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5 - Classic Release UI
+    PuckAFK Hub | Universal Access Loader v5.1 - Remember Choice Fix
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -10,10 +10,11 @@
 
     Premium keys are saved locally only after successful validation.
 
-    v5 release polish:
-      - Branded Discord card with an in-loader Discord mark.
-      - Website actions open the browser directly; no clipboard fallback.
-      - Animated entrance, page transitions, buttons, inputs, status, and exit.
+    v5.1 release polish:
+      - Fixes stale Free mode causing later executions to skip the chooser.
+      - Adds an explicit Keep My Choice toggle, off by default.
+      - Remembered choices get a visible 3-second cancel/change window.
+      - Keeps branded Discord, direct website opening, and full UI animations.
       - Idempotent GUI cleanup and executor-safe fallbacks.
 ]]
 
@@ -30,6 +31,7 @@ local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/pre
 local DISCORD_INVITE = "https://discord.gg/NFfs8G2WAz"
 local PREMIUM_PAGE = "https://puckafk.site/premium/"
 local KEY_FILE = "PuckHub/premium.key"
+local CHOICE_FILE = "PuckHub/access-choice.txt"
 
 local function trim(value)
     return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -37,6 +39,43 @@ end
 
 local function normalizeKey(value)
     return trim(value):gsub("%s+", "")
+end
+
+local function normalizeChoice(value)
+    value = string.lower(trim(value))
+    if value == "free" or value == "premium" then return value end
+    return ""
+end
+
+local function readSavedChoice()
+    local envChoice = normalizeChoice(rawget(ENV, "PuckHubRememberedAccess"))
+    if envChoice ~= "" then return envChoice end
+
+    if type(isfile) == "function" and type(readfile) == "function" then
+        local okExists, exists = pcall(isfile, CHOICE_FILE)
+        if okExists and exists then
+            local okRead, value = pcall(readfile, CHOICE_FILE)
+            if okRead then return normalizeChoice(value) end
+        end
+    end
+    return ""
+end
+
+local function saveChoice(choice)
+    choice = normalizeChoice(choice)
+    if choice == "" then return false end
+    ENV.PuckHubRememberedAccess = choice
+    if type(writefile) ~= "function" then return true end
+    if type(makefolder) == "function" then pcall(makefolder, "PuckHub") end
+    return pcall(writefile, CHOICE_FILE, choice)
+end
+
+local function clearSavedChoice()
+    ENV.PuckHubRememberedAccess = nil
+    if type(delfile) == "function" and type(isfile) == "function" then
+        local okExists, exists = pcall(isfile, CHOICE_FILE)
+        if okExists and exists then pcall(delfile, CHOICE_FILE) end
+    end
 end
 
 local function compiler()
@@ -208,15 +247,18 @@ end
 
 local function launchFree(setStatus)
     if setStatus then setStatus("Loading Free access…") end
+    ENV.PuckHubCurrentAccessMode = "free"
     ENV.PuckHubAccessMode = "free"
 
     local ok, source = fetchText(FREE_LOADER)
     if not ok then
+        ENV.PuckHubAccessMode = nil
         if setStatus then setStatus("Could not download the Free loader.", true) end
         return false
     end
 
     local launched, err = launchSource(source, "Free loader")
+    ENV.PuckHubAccessMode = nil
     if not launched then
         if setStatus then setStatus(err, true) end
         return false
@@ -352,11 +394,13 @@ local function launchPremium(key, setStatus)
     end
 
     setStatus("Key accepted. Launching Premium…")
+    ENV.PuckHubCurrentAccessMode = "premium"
     ENV.PuckHubAccessMode = "premium"
     ENV.PuckHubKey = key
     saveKey(key)
 
     local launched, runtimeError = launchSource(source, tostring(info.name or "Premium script"))
+    ENV.PuckHubAccessMode = nil
     premiumBusy = false
     if not launched then
         setStatus(runtimeError, true)
@@ -699,18 +743,18 @@ local function createDiscordCard(parent, position, size, callback)
     return card
 end
 
-local function runAccessGate(openPremiumImmediately)
+local function runAccessGate(openPremiumImmediately, rememberedChoice)
     destroyOldAccessGui()
 
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
     local phoneLayout = UserInputService.TouchEnabled and math.min(viewport.X, viewport.Y) <= 720
     local windowWidth = phoneLayout and 350 or 480
-    local chooserHeight = phoneLayout and 326 or 306
+    local chooserHeight = phoneLayout and 370 or 348
     local premiumHeight = phoneLayout and 470 or 448
     local currentHeight = chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.0.0"
+    ENV.PuckHubLoaderVersion = "5.1.0"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
@@ -1026,6 +1070,14 @@ local function runAccessGate(openPremiumImmediately)
         premiumY = 132
     end
 
+    rememberedChoice = normalizeChoice(rememberedChoice)
+    local rememberChoice = rememberedChoice ~= ""
+    local savedCountdownToken = 0
+
+    local function cancelSavedCountdown()
+        savedCountdownToken = savedCountdownToken + 1
+    end
+
     local function setChooserStatus(textValue, isError, success)
         if not chooserStatus.Parent then return end
         chooserStatus.Text = tostring(textValue or "")
@@ -1034,8 +1086,10 @@ local function runAccessGate(openPremiumImmediately)
         pulseStatus(chooserStatus, color)
     end
 
-    accessButton(chooser, "FreeAccess", "FREE ACCESS", UDim2.new(0, 14, 0, freeY), UDim2.new(1, -28, 0, 42), function()
+    local function chooseFree()
         if busy or cancelled then return end
+        cancelSavedCountdown()
+        if rememberChoice then saveChoice("free") else clearSavedChoice() end
         busy = true
         setChooserStatus("Loading Free access...")
         accentTop.BackgroundColor3 = THEME.Accent
@@ -1052,7 +1106,9 @@ local function runAccessGate(openPremiumImmediately)
                 pcall(function() gui:Destroy() end)
             end
         end)
-    end)
+    end
+
+    accessButton(chooser, "FreeAccess", "FREE ACCESS", UDim2.new(0, 14, 0, freeY), UDim2.new(1, -28, 0, 42), chooseFree)
 
     local freeInfo = accessLabel(chooser, "No key required  •  normal public PuckAFK scripts", 9, THEME.DimText, 12)
     freeInfo.Position = UDim2.fromOffset(14, freeY + 43)
@@ -1060,15 +1116,47 @@ local function runAccessGate(openPremiumImmediately)
     freeInfo.TextXAlignment = Enum.TextXAlignment.Center
 
     local premiumButton
-    premiumButton = accessButton(chooser, "PremiumAccess", "PREMIUM ACCESS", UDim2.new(0, 14, 0, premiumY), UDim2.new(1, -28, 0, 42), function()
+    local function choosePremium()
         if busy or cancelled then return end
+        cancelSavedCountdown()
+        if rememberChoice then saveChoice("premium") else clearSavedChoice() end
         switchPanel(chooser, premium, "PuckAFK Hub | Premium", premiumHeight, 1)
-    end)
+    end
+
+    premiumButton = accessButton(chooser, "PremiumAccess", "PREMIUM ACCESS", UDim2.new(0, 14, 0, premiumY), UDim2.new(1, -28, 0, 42), choosePremium)
 
     local premiumInfo = accessLabel(chooser, "Validate your paid PuckHub key before Premium source delivery", 9, THEME.DimText, 12)
     premiumInfo.Position = UDim2.fromOffset(14, premiumY + 43)
     premiumInfo.Size = UDim2.new(1, -28, 0, 14)
     premiumInfo.TextXAlignment = Enum.TextXAlignment.Center
+
+    local rememberY = premiumY + 66
+    local rememberButton
+    local function refreshRememberButton()
+        if not rememberButton or not rememberButton.Parent then return end
+        rememberButton.Text = rememberChoice and "[x]  KEEP MY CHOICE" or "[ ]  KEEP MY CHOICE"
+        rememberButton.TextColor3 = rememberChoice and THEME.Success or THEME.BrightText
+    end
+
+    rememberButton = accessButton(chooser, "RememberChoice", "[ ]  KEEP MY CHOICE", UDim2.new(0, 14, 0, rememberY), UDim2.new(1, -28, 0, 32), function()
+        rememberChoice = not rememberChoice
+        cancelSavedCountdown()
+        if not rememberChoice then
+            clearSavedChoice()
+            rememberedChoice = ""
+            setChooserStatus("Keep choice is off — the loader will ask every time.", false, true)
+        else
+            setChooserStatus("Keep choice is on — your next selection will be remembered.", false, true)
+        end
+        refreshRememberButton()
+    end, {TextSize = 10})
+    refreshRememberButton()
+
+    local rememberInfo = accessLabel(chooser, "Off by default  •  turn this on only if you want PuckHub to keep your tier", 9, THEME.DimText, 12)
+    rememberInfo.Position = UDim2.fromOffset(14, rememberY + 34)
+    rememberInfo.Size = UDim2.new(1, -28, 0, 14)
+    rememberInfo.TextXAlignment = Enum.TextXAlignment.Center
+    rememberInfo.TextTruncate = Enum.TextTruncate.AtEnd
 
     local setPremiumStatus
 
@@ -1209,6 +1297,25 @@ local function runAccessGate(openPremiumImmediately)
     accessTween(shadow, 0.26, {BackgroundTransparency = 0.5, Position = UDim2.new(0.5, 4, 0.5, 4), Size = UDim2.fromOffset(windowWidth, currentHeight)}, Enum.EasingStyle.Quart)
     accessTween(accentTop, 0.35, {BackgroundTransparency = 0.12}, Enum.EasingStyle.Sine)
 
+    if rememberedChoice ~= "" and not openPremiumImmediately then
+        local token = savedCountdownToken + 1
+        savedCountdownToken = token
+        local label = rememberedChoice == "free" and "Free" or "Premium"
+        task.spawn(function()
+            for seconds = 3, 1, -1 do
+                if cancelled or busy or token ~= savedCountdownToken or not rememberChoice then return end
+                setChooserStatus("Saved choice: " .. label .. "  •  continuing in " .. tostring(seconds) .. "s — click anything to change it.")
+                task.wait(1)
+            end
+            if cancelled or busy or token ~= savedCountdownToken or not rememberChoice then return end
+            if rememberedChoice == "free" then
+                chooseFree()
+            else
+                choosePremium()
+            end
+        end)
+    end
+
     if openPremiumImmediately then
         chooser.Visible = false
         chooser.GroupTransparency = 1
@@ -1223,9 +1330,19 @@ end
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
--- Explicit mode is useful for the Premium purchase page and power users.
--- The normal homepage loader does not set a mode, so users get the classic chooser.
-local requestedMode = string.lower(trim(ENV.PuckHubAccessMode))
+-- Explicit requests now use PuckHubRequestedAccessMode. PuckHubAccessMode is runtime
+-- state only and is cleared so a previous Free launch can never trap later executions.
+local requestedMode = normalizeChoice(rawget(ENV, "PuckHubRequestedAccessMode"))
+local legacyMode = normalizeChoice(rawget(ENV, "PuckHubAccessMode"))
+ENV.PuckHubRequestedAccessMode = nil
+ENV.PuckHubAccessMode = nil
+
+-- Backward compatibility for older Premium purchase snippets: accept the old Premium
+-- mode only when a Premium key is present. Deliberately ignore legacy Free mode.
+if requestedMode == "" and legacyMode == "premium" and readSavedKey() ~= "" then
+    requestedMode = "premium"
+end
+
 if requestedMode == "free" then
     return launchFree()
 elseif requestedMode == "premium" then
@@ -1236,6 +1353,7 @@ elseif requestedMode == "premium" then
         end
         if launchPremium(key, silentStatus) then return end
     end
+    return runAccessGate(true, readSavedChoice())
 end
 
-return runAccessGate(requestedMode == "premium")
+return runAccessGate(false, readSavedChoice())
