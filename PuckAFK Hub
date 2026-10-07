@@ -296,7 +296,9 @@ local function accessLaunchCanonicalPremium(key, setStatus)
         return false
     end
 
-    accessSaveKey(key)
+    -- Keep the entered key only in this runtime until the server accepts it.
+    -- The canonical Premium loader persists it only after successful validation.
+    ENV.PuckHubKey = key
     ENV.PuckHubAccessMode = "premium"
     setStatus("Premium key ready. Validating with PuckAFK...", Color3.fromRGB(48, 145, 78))
     task.spawn(chunk)
