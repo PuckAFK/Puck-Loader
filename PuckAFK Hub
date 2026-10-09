@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.9.2 - Classic UI + My Anime Mine Support
+    PuckAFK Hub | Universal Access Loader v5.9.3 - Classic UI + Tower Incremental Support
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -294,7 +294,7 @@ local function launchSource(source, label)
 end
 
 local function launchFree(setStatus)
-    local launchLabel = game.PlaceId == 79389059854988 and "My Anime Mine" or (game.PlaceId == 96124247562170 and "+1 Soldier Evolution" or "Free access")
+    local launchLabel = game.PlaceId == 75766778174856 and "Tower Incremental" or (game.PlaceId == 79389059854988 and "My Anime Mine" or (game.PlaceId == 96124247562170 and "+1 Soldier Evolution" or "Free access"))
     if setStatus then setStatus("Loading " .. launchLabel .. "…") end
     ENV.PuckHubCurrentAccessMode = "free"
     ENV.PuckHubAccessMode = "free"
