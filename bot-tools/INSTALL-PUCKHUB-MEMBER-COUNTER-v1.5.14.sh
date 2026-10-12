@@ -35,6 +35,7 @@ needle = "client.login("
 place = old.rfind(needle)
 if place < 0:
     raise SystemExit("[PuckHub] Missing client.login marker. No changes made.")
+place = old.rfind("\n", 0, place) + 1
 
 addon = r'''
 // PUCKHUB_MEMBER_COUNTER_V1514
