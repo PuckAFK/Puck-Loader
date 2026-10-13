@@ -143,6 +143,60 @@ local function sanitizeFileComponent(value, fallback)
     return text:sub(1, 80)
 end
 
+-- Recover configuration support when some executor filesystem primitives are missing.
+-- Old nested paths stay primary; flat root-level files are the fallback.
+local rawRead, rawWrite, rawDelete = FileAPI.Read, FileAPI.Write, FileAPI.DeleteFile
+local function flatConfigPath(path)
+    return "PuckAFK_Config_" .. tostring(path):gsub("[^%w%._%-]", "_")
+end
+if rawRead then
+    FileAPI.Read = function(path)
+        local ok, result = pcall(rawRead, path)
+        if ok and type(result) == "string" then return result end
+        ok, result = pcall(rawRead, flatConfigPath(path))
+        if ok and type(result) == "string" then return result end
+        error("Cannot read config " .. tostring(path))
+    end
+end
+FileAPI.IsFile = function(path)
+    if not FileAPI.Read then return false end
+    local ok, data = pcall(FileAPI.Read, path)
+    return ok and type(data) == "string"
+end
+if rawWrite then
+    FileAPI.Write = function(path, contents)
+        if type(contents) ~= "string" or not rawRead then
+            error("Config data cannot be saved and verified")
+        end
+        for _, candidate in ipairs({path, flatConfigPath(path)}) do
+            if pcall(rawWrite, candidate, contents) then
+                local ok, check = pcall(rawRead, candidate)
+                if ok and check == contents then return true end
+            end
+        end
+        error("File save verification failed on both paths")
+    end
+end
+if rawDelete and rawRead then
+    FileAPI.DeleteFile = function(path)
+        local deleted = false
+        for _, candidate in ipairs({path, flatConfigPath(path)}) do
+            if pcall(rawRead, candidate) then
+                local ok = pcall(rawDelete, candidate)
+                if not ok or pcall(rawRead, candidate) then
+                    error("Cannot delete config " .. candidate)
+                end
+                deleted = true
+            end
+        end
+        if not deleted then error("Config not found") end
+        return true
+    end
+end
+SharedEnvironment.__PUCKAFK_CONFIG_MEMORY_V2 =
+    SharedEnvironment.__PUCKAFK_CONFIG_MEMORY_V2 or {}
+local MemoryConfigStore = SharedEnvironment.__PUCKAFK_CONFIG_MEMORY_V2
+
 local function ensureFolderPath(path)
     if not FileAPI.MakeFolder then
         return false
@@ -242,9 +296,7 @@ local function loadSharedUIPreferences()
 end
 
 local function saveSharedUIPreferences()
-    if not FileAPI.Write or not FileAPI.MakeFolder then
-        return false
-    end
+    if not FileAPI.Write or not FileAPI.Read then return false end
 
     ensureFolderPath(SharedConfigState.Root)
     local encoded = jsonEncode({
@@ -1273,6 +1325,8 @@ function PuckUI:CreateWindow(settings)
     local config = {
         Enabled = settings.DisableConfigs ~= true,
         Available = false,
+        Persistent = false,
+        KnownProfiles = {},
         Root = tostring(configSettings.Root or SharedConfigState.Root),
         Id = configId,
         Folder = "",
@@ -1292,12 +1346,14 @@ function PuckUI:CreateWindow(settings)
 
     config.Folder = config.Root .. "/" .. config.Id
     config.MetaPath = config.Folder .. "/_meta.json"
-    config.Available =
-        config.Enabled
-        and FileAPI.Write ~= nil
-        and FileAPI.Read ~= nil
-        and FileAPI.IsFile ~= nil
-        and FileAPI.MakeFolder ~= nil
+    config.Persistent = config.Enabled
+        and FileAPI.Write ~= nil and FileAPI.Read ~= nil
+    config.Available = config.Persistent
+    local bucketKey = config.Root .. "/" .. config.Id
+    MemoryConfigStore[bucketKey] = MemoryConfigStore[bucketKey]
+        or {Profiles = {}, Meta = nil}
+    local memory = MemoryConfigStore[bucketKey]
+    config.MemoryProfiles = memory.Profiles
 
     if configSettings.AutoSave ~= nil then
         config.AutoSave = configSettings.AutoSave == true
