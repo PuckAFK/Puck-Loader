@@ -1479,7 +1479,12 @@ function PuckUI:CreateWindow(settings)
             config.LastWriteError = success and nil or tostring(reason)
         end
         if diskSaved or not config.Persistent then self:_SaveConfigMeta() end
-        config.LastFingerprint = self:_ConfigFingerprint()
+        if diskSaved or not config.Persistent then
+            config.LastFingerprint = self:_ConfigFingerprint()
+            config.LastFailedSaveAt = nil
+        else
+            config.LastFailedSaveAt = os.clock()
+        end
         local status = diskSaved and "Saved to disk" or "Session only"
         setConfigStatus(status .. " • " .. cleanProfile)
         if showNotification then
@@ -3431,18 +3436,16 @@ function PuckUI:CreateWindow(settings)
         tab:CreateSection("Profiles")
 
         config.StatusLabel = tab:CreateLabel(
-            config.Available
-                and ("Ready • " .. config.Selected)
-                or "Unavailable • executor filesystem APIs missing"
+            config.Persistent
+                and ("Persistent profiles available • " .. config.Selected)
+                or ("Session-only profiles • " .. config.Selected)
         )
-
-        if not config.Available then
+        if not config.Persistent then
             tab:CreateParagraph({
-                Title = "Persistent configs unavailable",
-                Content = "This executor needs writefile, readfile, isfile and makefolder for saved configs. The rest of PuckAFK still works normally.",
-                Height = 64,
+                Title = "Executor has no persistent file storage",
+                Content = "Profiles can be saved during this session, but will not survive executor restart. Use JSON export/import to transfer them manually; nothing is uploaded.",
+                Height = 72,
             })
-            return tab
         end
 
         config.ProfilesDropdown = tab:CreateDropdown({
@@ -3523,6 +3526,59 @@ function PuckUI:CreateWindow(settings)
                         Duration = 2,
                     })
                 end
+            end,
+        })
+
+        tab:CreateSection("Manual Export & Import")
+        tab:CreateLabel("Exports may include personal values stored in script settings.")
+        tab:CreateButton({
+            Name = "Export Profile JSON",
+            Callback = function()
+                local encoded = jsonEncode({
+                    Version = 2, ConfigId = config.Id,
+                    Profile = config.Selected, Values = self:_SnapshotConfigValues(),
+                })
+                if not encoded then
+                    setConfigStatus("Export failed • invalid JSON data")
+                    return
+                end
+                local clipboard = type(setclipboard) == "function" and setclipboard
+                    or (type(toclipboard) == "function" and toclipboard or nil)
+                if clipboard and pcall(clipboard, encoded) then
+                    setConfigStatus("JSON copied • " .. config.Selected)
+                else
+                    print("[PuckAFK Config JSON] " .. encoded)
+                    setConfigStatus("No clipboard API • JSON printed to executor console")
+                end
+            end,
+        })
+        local importInput = tab:CreateInput({
+            Name = "Import JSON", PlaceholderText = "Paste a PuckAFK config export",
+            CurrentValue = "", NoConfig = true,
+        })
+        tab:CreateButton({
+            Name = "Import JSON Profile",
+            Callback = function()
+                local encoded = importInput and importInput:Get() or ""
+                local parsed = jsonDecode(encoded)
+                if type(parsed) ~= "table" or type(parsed.Values) ~= "table" then
+                    setConfigStatus("Invalid JSON profile")
+                    return
+                end
+                if parsed.ConfigId ~= nil and parsed.ConfigId ~= config.Id then
+                    setConfigStatus("Wrong game config • " .. tostring(parsed.ConfigId))
+                    return
+                end
+                local proposed = sanitizeFileComponent(parsed.Profile or config.Selected, "default")
+                config.Selected = proposed
+                self:_ApplyConfigValues(parsed.Values)
+                self:_WriteConfig(proposed, false)
+                if config.ProfilesDropdown and config.ProfilesDropdown.Refresh then
+                    config.ProfilesDropdown:Refresh(self:_ListConfigProfiles())
+                    config.ProfilesDropdown:Set(proposed)
+                end
+                setConfigStatus(config.Persistent and "JSON imported • profile saved if writable"
+                    or "JSON imported • session only")
             end,
         })
 
@@ -3832,16 +3888,16 @@ function PuckUI:CreateWindow(settings)
     task.spawn(function()
         task.wait(1.0)
 
-        if not config.Available or not config.Enabled then
-            return
-        end
+        if not config.Enabled then return end
 
         config.Ready = true
         config.LastFingerprint = window:_ConfigFingerprint()
 
         -- If Auto Save is enabled and the selected profile does not exist yet,
         -- create it from the script's current defaults/loaded state.
-        if config.AutoSave and not FileAPI.IsFile(configFilePath(config.Selected)) then
+        local present = config.MemoryProfiles[config.Selected] ~= nil
+            or (config.Persistent and FileAPI.IsFile(configFilePath(config.Selected)))
+        if config.AutoSave and not present then
             window:_WriteConfig(config.Selected, false)
         end
 
@@ -3850,7 +3906,9 @@ function PuckUI:CreateWindow(settings)
                 local fingerprint = window:_ConfigFingerprint()
 
                 if fingerprint ~= ""
-                    and fingerprint ~= config.LastFingerprint then
+                    and fingerprint ~= config.LastFingerprint
+                    and (not config.LastFailedSaveAt
+                        or os.clock() - config.LastFailedSaveAt >= 15) then
                     window:_WriteConfig(config.Selected, false)
                 end
             end
