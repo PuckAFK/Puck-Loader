@@ -1379,48 +1379,41 @@ function PuckUI:CreateWindow(settings)
     end
 
     function window:_SaveConfigMeta()
-        if not config.Available then
-            return false
+        local profiles = {}
+        for name, present in pairs(config.KnownProfiles) do
+            if present then table.insert(profiles, name) end
         end
-
-        local encoded = jsonEncode({
-            Version = 1,
-            Selected = config.Selected,
-            AutoSave = config.AutoSave,
-            AutoLoad = config.AutoLoad,
-        })
-
-        if not encoded then
-            return false
-        end
-
-        local ok = pcall(FileAPI.Write, config.MetaPath, encoded)
-        return ok == true
+        table.sort(profiles)
+        local data = {
+            Version = 2, Selected = config.Selected,
+            AutoSave = config.AutoSave, AutoLoad = config.AutoLoad,
+            Profiles = profiles,
+        }
+        memory.Meta = data
+        if not config.Persistent then return true end
+        ensureFolderPath(config.Folder)
+        local encoded = jsonEncode(data)
+        if not encoded then return false end
+        return pcall(FileAPI.Write, config.MetaPath, encoded)
     end
 
     local function loadConfigMeta()
-        if not config.Available or not FileAPI.IsFile(config.MetaPath) then
-            return
+        local data = memory.Meta
+        if config.Persistent and FileAPI.IsFile(config.MetaPath) then
+            local ok, content = pcall(FileAPI.Read, config.MetaPath)
+            local decoded = ok and jsonDecode(content)
+            if type(decoded) == "table" then data = decoded end
         end
-
-        local ok, text = pcall(FileAPI.Read, config.MetaPath)
-        if not ok then
-            return
-        end
-
-        local data = jsonDecode(text)
-        if type(data) ~= "table" then
-            return
-        end
-
+        if type(data) ~= "table" then return end
         if data.Selected ~= nil then
             config.Selected = sanitizeFileComponent(data.Selected, "default")
         end
-        if data.AutoSave ~= nil then
-            config.AutoSave = data.AutoSave == true
-        end
-        if data.AutoLoad ~= nil then
-            config.AutoLoad = data.AutoLoad == true
+        if data.AutoSave ~= nil then config.AutoSave = data.AutoSave == true end
+        if data.AutoLoad ~= nil then config.AutoLoad = data.AutoLoad == true end
+        if type(data.Profiles) == "table" then
+            for _, name in ipairs(data.Profiles) do
+                config.KnownProfiles[sanitizeFileComponent(name, "default")] = true
+            end
         end
     end
 
@@ -1452,55 +1445,52 @@ function PuckUI:CreateWindow(settings)
     end
 
     function window:_WriteConfig(profile, showNotification)
-        if not config.Available then
-            setConfigStatus("Configs unavailable • executor filesystem APIs missing")
-            if showNotification then
-                PuckUI:Notify({
-                    Title = "Configs",
-                    Content = "This executor does not expose writefile/readfile/makefolder.",
-                    Duration = 3,
-                })
-            end
-            return false
-        end
-
+        if not config.Enabled then return false end
         local cleanProfile = sanitizeFileComponent(profile or config.Selected, "default")
         config.Selected = cleanProfile
-        ensureFolderPath(config.Folder)
-
         local payload = {
-            Version = 1,
-            PuckUIVersion = PuckUI.Version,
-            ConfigId = config.Id,
-            Profile = cleanProfile,
+            Version = 2, PuckUIVersion = PuckUI.Version,
+            ConfigId = config.Id, Profile = cleanProfile,
             Values = self:_SnapshotConfigValues(),
         }
-
-        local encoded = jsonEncode(payload)
-        if not encoded then
-            setConfigStatus("Save failed • JSON encode error")
-            return false
+        -- Session profiles work without filesystem APIs. Never label them as
+        -- permanently saved when the executor has no usable file storage.
+        config.MemoryProfiles[cleanProfile] = payload
+        config.KnownProfiles[cleanProfile] = true
+        local diskSaved = false
+        if config.Persistent then
+            ensureFolderPath(config.Folder)
+            local path = configFilePath(cleanProfile)
+            local encoded = jsonEncode(payload)
+            if not encoded then
+                setConfigStatus("Save failed • invalid config data")
+                return false
+            end
+            if FileAPI.IsFile(path) then
+                local oldOK, oldText = pcall(FileAPI.Read, path)
+                local oldData = oldOK and jsonDecode(oldText)
+                if type(oldData) == "table" and type(oldData.Values) == "table"
+                    and oldText ~= encoded then
+                    pcall(FileAPI.Write, path .. ".bak", oldText)
+                end
+            end
+            local success, reason = pcall(FileAPI.Write, path, encoded)
+            diskSaved = success
+            config.LastWriteError = success and nil or tostring(reason)
         end
-
-        local ok, err = pcall(FileAPI.Write, configFilePath(cleanProfile), encoded)
-        if not ok then
-            setConfigStatus("Save failed • " .. tostring(err))
-            return false
-        end
-
-        self:_SaveConfigMeta()
+        if diskSaved or not config.Persistent then self:_SaveConfigMeta() end
         config.LastFingerprint = self:_ConfigFingerprint()
-        setConfigStatus("Saved • " .. cleanProfile)
-
+        local status = diskSaved and "Saved to disk" or "Session only"
+        setConfigStatus(status .. " • " .. cleanProfile)
         if showNotification then
             PuckUI:Notify({
                 Title = "Configs",
-                Content = "Saved " .. cleanProfile,
-                Duration = 2,
+                Content = diskSaved and ("Saved permanently: " .. cleanProfile)
+                    or ("Saved for this session only: " .. cleanProfile),
+                Duration = 3,
             })
         end
-
-        return true
+        return diskSaved or not config.Persistent
     end
 
     function window:_ApplyConfigValues(values)
