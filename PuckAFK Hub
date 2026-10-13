@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.9.4 - Classic UI + Deep Fishing Support
+    PuckAFK Hub | Universal Access Loader v5.9.5 - Classic UI + Deep Fishing Support
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -17,7 +17,11 @@
       - No browser opening or public Premium source URL.
 ]]
 
-local ENV = (type(getgenv) == "function" and getgenv()) or _G
+local ENV = _G
+if type(getgenv) == "function" then
+    local ok, shared = pcall(getgenv)
+    if ok and type(shared) == "table" then ENV = shared end
+end
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
@@ -31,6 +35,8 @@ local DISCORD_INVITE = "https://discord.gg/NFfs8G2WAz"
 local PREMIUM_PAGE = "https://puckafk.site/premium/"
 local KEY_FILE = "PuckHub/premium.key"
 local CHOICE_FILE = "PuckHub/access-choice.txt"
+local KEY_FLAT_FILE = "PuckHub_premium.key"
+local CHOICE_FLAT_FILE = "PuckHub_access-choice.txt"
 
 local function trim(value)
     return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -46,35 +52,68 @@ local function normalizeChoice(value)
     return ""
 end
 
-local function readSavedChoice()
-    local envChoice = normalizeChoice(rawget(ENV, "PuckHubRememberedAccess"))
-    if envChoice ~= "" then return envChoice end
+-- Do not require isfile or makefolder: many executors provide only
+-- readfile/writefile. Validate persistence by reading saved bytes back.
+local function readSavedText(primary, flat)
+    if type(readfile) ~= "function" then return nil end
+    for _, path in ipairs({primary, flat}) do
+        local ok, contents = pcall(readfile, path)
+        if ok and type(contents) == "string" then return contents end
+    end
+    return nil
+end
 
-    if type(isfile) == "function" and type(readfile) == "function" then
-        local okExists, exists = pcall(isfile, CHOICE_FILE)
-        if okExists and exists then
-            local okRead, value = pcall(readfile, CHOICE_FILE)
-            if okRead then return normalizeChoice(value) end
+local function saveText(primary, flat, contents)
+    if type(readfile) ~= "function" or type(writefile) ~= "function" then
+        return false
+    end
+    if type(makefolder) == "function" then pcall(makefolder, "PuckHub") end
+    for _, path in ipairs({primary, flat}) do
+        if pcall(writefile, path, contents) then
+            local ok, stored = pcall(readfile, path)
+            if ok and stored == contents then return true end
         end
     end
-    return ""
+    return false
+end
+
+local function clearText(primary, flat)
+    if type(readfile) ~= "function" then return false end
+    local cleared = true
+    for _, path in ipairs({primary, flat}) do
+        local readOK, contents = pcall(readfile, path)
+        if readOK and type(contents) == "string" and contents ~= "" then
+            local done = false
+            if type(delfile) == "function" and pcall(delfile, path) then
+                done = not pcall(readfile, path)
+            end
+            if not done and type(writefile) == "function"
+                and pcall(writefile, path, "") then
+                local checkOK, check = pcall(readfile, path)
+                done = checkOK and check == ""
+            end
+            if not done then cleared = false end
+        end
+    end
+    return cleared
+end
+
+local function readSavedChoice()
+    local session = normalizeChoice(rawget(ENV, "PuckHubRememberedAccess"))
+    if session ~= "" then return session end
+    return normalizeChoice(readSavedText(CHOICE_FILE, CHOICE_FLAT_FILE))
 end
 
 local function saveChoice(choice)
     choice = normalizeChoice(choice)
     if choice == "" then return false end
     ENV.PuckHubRememberedAccess = choice
-    if type(writefile) ~= "function" then return true end
-    if type(makefolder) == "function" then pcall(makefolder, "PuckHub") end
-    return pcall(writefile, CHOICE_FILE, choice)
+    return saveText(CHOICE_FILE, CHOICE_FLAT_FILE, choice)
 end
 
 local function clearSavedChoice()
     ENV.PuckHubRememberedAccess = nil
-    if type(delfile) == "function" and type(isfile) == "function" then
-        local okExists, exists = pcall(isfile, CHOICE_FILE)
-        if okExists and exists then pcall(delfile, CHOICE_FILE) end
-    end
+    return clearText(CHOICE_FILE, CHOICE_FLAT_FILE)
 end
 
 local function compiler()
@@ -143,36 +182,21 @@ local function deviceIdentifier()
 end
 
 local function readSavedKey()
-    local envKey = normalizeKey(ENV.PuckHubKey)
-    if envKey ~= "" then return envKey end
-
-    if type(isfile) == "function" and type(readfile) == "function" then
-        local okExists, exists = pcall(isfile, KEY_FILE)
-        if okExists and exists then
-            local okRead, value = pcall(readfile, KEY_FILE)
-            if okRead then return normalizeKey(value) end
-        end
-    end
-    return ""
+    local session = normalizeKey(ENV.PuckHubKey)
+    if session ~= "" then return session end
+    return normalizeKey(readSavedText(KEY_FILE, KEY_FLAT_FILE))
 end
 
 local function saveKey(key)
     key = normalizeKey(key)
     if key == "" then return false end
     ENV.PuckHubKey = key
-
-    if type(writefile) ~= "function" then return true end
-    if type(makefolder) == "function" then pcall(makefolder, "PuckHub") end
-    local ok = pcall(writefile, KEY_FILE, key)
-    return ok
+    return saveText(KEY_FILE, KEY_FLAT_FILE, key)
 end
 
 local function clearSavedKey()
     ENV.PuckHubKey = nil
-    if type(delfile) == "function" and type(isfile) == "function" then
-        local okExists, exists = pcall(isfile, KEY_FILE)
-        if okExists and exists then pcall(delfile, KEY_FILE) end
-    end
+    return clearText(KEY_FILE, KEY_FLAT_FILE)
 end
 
 local function copyToClipboard(value)
@@ -462,7 +486,10 @@ local function launchPremium(key, setStatus)
     ENV.PuckHubCurrentAccessMode = "premium"
     ENV.PuckHubAccessMode = "premium"
     ENV.PuckHubKey = key
-    saveKey(key)
+    local keyPersisted = saveKey(key)
+    if not keyPersisted then
+        warn("[PuckAFK Hub] Premium validated; executor cannot persist the key. Session only.")
+    end
 
     local launched, runtimeError = launchSource(source, tostring(info.name or "Premium script"))
     ENV.PuckHubAccessMode = nil
@@ -801,7 +828,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     local currentHeight = chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.9.0"
+    ENV.PuckHubLoaderVersion = "5.9.5"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
@@ -1192,11 +1219,19 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
         rememberChoice = not rememberChoice
         cancelSavedCountdown()
         if not rememberChoice then
-            clearSavedChoice()
+            local cleared = clearSavedChoice()
             rememberedChoice = ""
-            setChooserStatus("Keep choice is off — the loader will ask every time.", false, true)
+            setChooserStatus(cleared
+                and "Keep choice is off — the loader will ask every time."
+                or "Choice cleared for this session; executor cannot erase saved file.",
+                not cleared, cleared)
         else
-            setChooserStatus("Keep choice is on — your next selection will be remembered.", false, true)
+            local permanent = type(readfile) == "function"
+                and type(writefile) == "function"
+            setChooserStatus(permanent
+                and "Keep choice is on — your selection will be saved when picked."
+                or "Keep choice is on for this session only; no persistent file APIs.",
+                not permanent, permanent)
         end
         refreshRememberButton()
     end, {TextSize = 10})
@@ -1332,9 +1367,12 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
 
     local forgetButton = accessButton(premium, "ForgetKey", "FORGET SAVED KEY", UDim2.new(0, 14, 0, 272), UDim2.new(0.5, -18, 0, 30), function()
         if busy then return end
-        clearSavedKey()
+        local cleared = clearSavedKey()
         keyBox.Text = ""
-        setPremiumStatus("Saved Premium key removed.")
+        setPremiumStatus(cleared
+            and "Saved Premium key removed."
+            or "Key cleared from session; executor could not remove its saved file.",
+            not cleared, cleared)
     end)
     accessIcon(forgetButton, ICON.Trash, UDim2.fromOffset(9, 7), UDim2.fromOffset(15, 15), THEME.DimText, 24)
 

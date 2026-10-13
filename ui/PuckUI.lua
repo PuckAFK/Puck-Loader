@@ -143,6 +143,60 @@ local function sanitizeFileComponent(value, fallback)
     return text:sub(1, 80)
 end
 
+-- Recover configuration support when some executor filesystem primitives are missing.
+-- Old nested paths stay primary; flat root-level files are the fallback.
+local rawRead, rawWrite, rawDelete = FileAPI.Read, FileAPI.Write, FileAPI.DeleteFile
+local function flatConfigPath(path)
+    return "PuckAFK_Config_" .. tostring(path):gsub("[^%w%._%-]", "_")
+end
+if rawRead then
+    FileAPI.Read = function(path)
+        local ok, result = pcall(rawRead, path)
+        if ok and type(result) == "string" then return result end
+        ok, result = pcall(rawRead, flatConfigPath(path))
+        if ok and type(result) == "string" then return result end
+        error("Cannot read config " .. tostring(path))
+    end
+end
+FileAPI.IsFile = function(path)
+    if not FileAPI.Read then return false end
+    local ok, data = pcall(FileAPI.Read, path)
+    return ok and type(data) == "string"
+end
+if rawWrite then
+    FileAPI.Write = function(path, contents)
+        if type(contents) ~= "string" or not rawRead then
+            error("Config data cannot be saved and verified")
+        end
+        for _, candidate in ipairs({path, flatConfigPath(path)}) do
+            if pcall(rawWrite, candidate, contents) then
+                local ok, check = pcall(rawRead, candidate)
+                if ok and check == contents then return true end
+            end
+        end
+        error("File save verification failed on both paths")
+    end
+end
+if rawDelete and rawRead then
+    FileAPI.DeleteFile = function(path)
+        local deleted = false
+        for _, candidate in ipairs({path, flatConfigPath(path)}) do
+            if pcall(rawRead, candidate) then
+                local ok = pcall(rawDelete, candidate)
+                if not ok or pcall(rawRead, candidate) then
+                    error("Cannot delete config " .. candidate)
+                end
+                deleted = true
+            end
+        end
+        if not deleted then error("Config not found") end
+        return true
+    end
+end
+SharedEnvironment.__PUCKAFK_CONFIG_MEMORY_V2 =
+    SharedEnvironment.__PUCKAFK_CONFIG_MEMORY_V2 or {}
+local MemoryConfigStore = SharedEnvironment.__PUCKAFK_CONFIG_MEMORY_V2
+
 local function ensureFolderPath(path)
     if not FileAPI.MakeFolder then
         return false
@@ -242,9 +296,7 @@ local function loadSharedUIPreferences()
 end
 
 local function saveSharedUIPreferences()
-    if not FileAPI.Write or not FileAPI.MakeFolder then
-        return false
-    end
+    if not FileAPI.Write or not FileAPI.Read then return false end
 
     ensureFolderPath(SharedConfigState.Root)
     local encoded = jsonEncode({
@@ -1273,6 +1325,8 @@ function PuckUI:CreateWindow(settings)
     local config = {
         Enabled = settings.DisableConfigs ~= true,
         Available = false,
+        Persistent = false,
+        KnownProfiles = {},
         Root = tostring(configSettings.Root or SharedConfigState.Root),
         Id = configId,
         Folder = "",
@@ -1292,12 +1346,14 @@ function PuckUI:CreateWindow(settings)
 
     config.Folder = config.Root .. "/" .. config.Id
     config.MetaPath = config.Folder .. "/_meta.json"
-    config.Available =
-        config.Enabled
-        and FileAPI.Write ~= nil
-        and FileAPI.Read ~= nil
-        and FileAPI.IsFile ~= nil
-        and FileAPI.MakeFolder ~= nil
+    config.Persistent = config.Enabled
+        and FileAPI.Write ~= nil and FileAPI.Read ~= nil
+    config.Available = config.Persistent
+    local bucketKey = config.Root .. "/" .. config.Id
+    MemoryConfigStore[bucketKey] = MemoryConfigStore[bucketKey]
+        or {Profiles = {}, Meta = nil}
+    local memory = MemoryConfigStore[bucketKey]
+    config.MemoryProfiles = memory.Profiles
 
     if configSettings.AutoSave ~= nil then
         config.AutoSave = configSettings.AutoSave == true
@@ -1323,48 +1379,41 @@ function PuckUI:CreateWindow(settings)
     end
 
     function window:_SaveConfigMeta()
-        if not config.Available then
-            return false
+        local profiles = {}
+        for name, present in pairs(config.KnownProfiles) do
+            if present then table.insert(profiles, name) end
         end
-
-        local encoded = jsonEncode({
-            Version = 1,
-            Selected = config.Selected,
-            AutoSave = config.AutoSave,
-            AutoLoad = config.AutoLoad,
-        })
-
-        if not encoded then
-            return false
-        end
-
-        local ok = pcall(FileAPI.Write, config.MetaPath, encoded)
-        return ok == true
+        table.sort(profiles)
+        local data = {
+            Version = 2, Selected = config.Selected,
+            AutoSave = config.AutoSave, AutoLoad = config.AutoLoad,
+            Profiles = profiles,
+        }
+        memory.Meta = data
+        if not config.Persistent then return true end
+        ensureFolderPath(config.Folder)
+        local encoded = jsonEncode(data)
+        if not encoded then return false end
+        return pcall(FileAPI.Write, config.MetaPath, encoded)
     end
 
     local function loadConfigMeta()
-        if not config.Available or not FileAPI.IsFile(config.MetaPath) then
-            return
+        local data = memory.Meta
+        if config.Persistent and FileAPI.IsFile(config.MetaPath) then
+            local ok, content = pcall(FileAPI.Read, config.MetaPath)
+            local decoded = ok and jsonDecode(content)
+            if type(decoded) == "table" then data = decoded end
         end
-
-        local ok, text = pcall(FileAPI.Read, config.MetaPath)
-        if not ok then
-            return
-        end
-
-        local data = jsonDecode(text)
-        if type(data) ~= "table" then
-            return
-        end
-
+        if type(data) ~= "table" then return end
         if data.Selected ~= nil then
             config.Selected = sanitizeFileComponent(data.Selected, "default")
         end
-        if data.AutoSave ~= nil then
-            config.AutoSave = data.AutoSave == true
-        end
-        if data.AutoLoad ~= nil then
-            config.AutoLoad = data.AutoLoad == true
+        if data.AutoSave ~= nil then config.AutoSave = data.AutoSave == true end
+        if data.AutoLoad ~= nil then config.AutoLoad = data.AutoLoad == true end
+        if type(data.Profiles) == "table" then
+            for _, name in ipairs(data.Profiles) do
+                config.KnownProfiles[sanitizeFileComponent(name, "default")] = true
+            end
         end
     end
 
@@ -1396,55 +1445,57 @@ function PuckUI:CreateWindow(settings)
     end
 
     function window:_WriteConfig(profile, showNotification)
-        if not config.Available then
-            setConfigStatus("Configs unavailable • executor filesystem APIs missing")
-            if showNotification then
-                PuckUI:Notify({
-                    Title = "Configs",
-                    Content = "This executor does not expose writefile/readfile/makefolder.",
-                    Duration = 3,
-                })
-            end
-            return false
-        end
-
+        if not config.Enabled then return false end
         local cleanProfile = sanitizeFileComponent(profile or config.Selected, "default")
         config.Selected = cleanProfile
-        ensureFolderPath(config.Folder)
-
         local payload = {
-            Version = 1,
-            PuckUIVersion = PuckUI.Version,
-            ConfigId = config.Id,
-            Profile = cleanProfile,
+            Version = 2, PuckUIVersion = PuckUI.Version,
+            ConfigId = config.Id, Profile = cleanProfile,
             Values = self:_SnapshotConfigValues(),
         }
-
-        local encoded = jsonEncode(payload)
-        if not encoded then
-            setConfigStatus("Save failed • JSON encode error")
-            return false
+        -- Session profiles work without filesystem APIs. Never label them as
+        -- permanently saved when the executor has no usable file storage.
+        config.MemoryProfiles[cleanProfile] = payload
+        config.KnownProfiles[cleanProfile] = true
+        local diskSaved = false
+        if config.Persistent then
+            ensureFolderPath(config.Folder)
+            local path = configFilePath(cleanProfile)
+            local encoded = jsonEncode(payload)
+            if not encoded then
+                setConfigStatus("Save failed • invalid config data")
+                return false
+            end
+            if FileAPI.IsFile(path) then
+                local oldOK, oldText = pcall(FileAPI.Read, path)
+                local oldData = oldOK and jsonDecode(oldText)
+                if type(oldData) == "table" and type(oldData.Values) == "table"
+                    and oldText ~= encoded then
+                    pcall(FileAPI.Write, path .. ".bak", oldText)
+                end
+            end
+            local success, reason = pcall(FileAPI.Write, path, encoded)
+            diskSaved = success
+            config.LastWriteError = success and nil or tostring(reason)
         end
-
-        local ok, err = pcall(FileAPI.Write, configFilePath(cleanProfile), encoded)
-        if not ok then
-            setConfigStatus("Save failed • " .. tostring(err))
-            return false
+        if diskSaved or not config.Persistent then self:_SaveConfigMeta() end
+        if diskSaved or not config.Persistent then
+            config.LastFingerprint = self:_ConfigFingerprint()
+            config.LastFailedSaveAt = nil
+        else
+            config.LastFailedSaveAt = os.clock()
         end
-
-        self:_SaveConfigMeta()
-        config.LastFingerprint = self:_ConfigFingerprint()
-        setConfigStatus("Saved • " .. cleanProfile)
-
+        local status = diskSaved and "Saved to disk" or "Session only"
+        setConfigStatus(status .. " • " .. cleanProfile)
         if showNotification then
             PuckUI:Notify({
                 Title = "Configs",
-                Content = "Saved " .. cleanProfile,
-                Duration = 2,
+                Content = diskSaved and ("Saved permanently: " .. cleanProfile)
+                    or ("Saved for this session only: " .. cleanProfile),
+                Duration = 3,
             })
         end
-
-        return true
+        return diskSaved or not config.Persistent
     end
 
     function window:_ApplyConfigValues(values)
@@ -1472,79 +1523,74 @@ function PuckUI:CreateWindow(settings)
     end
 
     function window:_ReadConfig(profile, showNotification)
-        if not config.Available then
-            setConfigStatus("Configs unavailable • executor filesystem APIs missing")
-            return false
-        end
-
+        if not config.Enabled then return false end
         local cleanProfile = sanitizeFileComponent(profile or config.Selected, "default")
         local path = configFilePath(cleanProfile)
-
-        if not FileAPI.IsFile(path) then
-            setConfigStatus("Not found • " .. cleanProfile)
+        local data, source
+        if config.Persistent then
+            for _, candidate in ipairs({path, path .. ".bak"}) do
+                if FileAPI.IsFile(candidate) then
+                    local ok, contents = pcall(FileAPI.Read, candidate)
+                    local parsed = ok and jsonDecode(contents)
+                    if type(parsed) == "table" and type(parsed.Values) == "table" then
+                        data, source = parsed, candidate == path and "disk" or "backup"
+                        break
+                    end
+                end
+            end
+        end
+        if not data then
+            local saved = config.MemoryProfiles[cleanProfile]
+            if type(saved) == "table" and type(saved.Values) == "table" then
+                data, source = saved, "session"
+            end
+        end
+        if not data then
+            setConfigStatus("Not found or unreadable • " .. cleanProfile)
             if showNotification then
                 PuckUI:Notify({
                     Title = "Configs",
-                    Content = "Config not found: " .. cleanProfile,
-                    Duration = 2.5,
+                    Content = "No readable profile: " .. cleanProfile, Duration = 3,
                 })
             end
             return false
         end
-
-        local ok, text = pcall(FileAPI.Read, path)
-        if not ok then
-            setConfigStatus("Load failed • could not read file")
-            return false
-        end
-
-        local data = jsonDecode(text)
-        if type(data) ~= "table" or type(data.Values) ~= "table" then
-            setConfigStatus("Load failed • invalid config file")
-            return false
-        end
-
         config.Selected = cleanProfile
         config.LoadedValues = data.Values
         self:_ApplyConfigValues(data.Values)
         self:_SaveConfigMeta()
-        setConfigStatus("Loaded • " .. cleanProfile)
-
+        setConfigStatus("Loaded (" .. source .. ") • " .. cleanProfile)
         if showNotification then
             PuckUI:Notify({
                 Title = "Configs",
-                Content = "Loaded " .. cleanProfile,
-                Duration = 2,
+                Content = "Loaded " .. cleanProfile .. " (" .. source .. ")", Duration = 3,
             })
         end
-
         return true
     end
 
     function window:_DeleteConfig(profile)
-        if not config.Available or not FileAPI.DeleteFile then
-            setConfigStatus("Delete unavailable in this executor")
-            return false
-        end
-
         local cleanProfile = sanitizeFileComponent(profile or config.Selected, "default")
         local path = configFilePath(cleanProfile)
-
-        if not FileAPI.IsFile(path) then
+        if config.Persistent and FileAPI.IsFile(path) then
+            if not FileAPI.DeleteFile then
+                setConfigStatus("Delete unavailable • executor lacks delfile")
+                return false
+            end
+            if not pcall(FileAPI.DeleteFile, path) then
+                setConfigStatus("Delete failed • " .. cleanProfile)
+                return false
+            end
+            if FileAPI.IsFile(path .. ".bak") then
+                pcall(FileAPI.DeleteFile, path .. ".bak")
+            end
+        elseif not config.MemoryProfiles[cleanProfile] then
             setConfigStatus("Not found • " .. cleanProfile)
             return false
         end
-
-        local ok = pcall(FileAPI.DeleteFile, path)
-        if not ok then
-            setConfigStatus("Delete failed • " .. cleanProfile)
-            return false
-        end
-
-        if config.Selected == cleanProfile then
-            config.Selected = "default"
-        end
-
+        config.MemoryProfiles[cleanProfile] = nil
+        config.KnownProfiles[cleanProfile] = nil
+        if config.Selected == cleanProfile then config.Selected = "default" end
         self:_SaveConfigMeta()
         setConfigStatus("Deleted • " .. cleanProfile)
         return true
@@ -1564,6 +1610,8 @@ function PuckUI:CreateWindow(settings)
 
         add(config.Selected)
         add("default")
+        for name in pairs(config.KnownProfiles) do add(name) end
+        for name in pairs(config.MemoryProfiles) do add(name) end
 
         if config.Available and FileAPI.ListFiles then
             local ok, files = pcall(FileAPI.ListFiles, config.Folder)
@@ -1623,20 +1671,27 @@ function PuckUI:CreateWindow(settings)
         end
     end
 
-    if config.Available then
-        ensureFolderPath(config.Folder)
+    if config.Enabled then
+        if config.Persistent then ensureFolderPath(config.Folder) end
         loadConfigMeta()
-
         if config.AutoLoad then
             local path = configFilePath(config.Selected)
-            if FileAPI.IsFile(path) then
-                local ok, text = pcall(FileAPI.Read, path)
-                if ok then
-                    local data = jsonDecode(text)
-                    if type(data) == "table" and type(data.Values) == "table" then
-                        config.LoadedValues = data.Values
+            local loaded
+            if config.Persistent then
+                for _, candidate in ipairs({path, path .. ".bak"}) do
+                    if FileAPI.IsFile(candidate) then
+                        local ok, contents = pcall(FileAPI.Read, candidate)
+                        local parsed = ok and jsonDecode(contents)
+                        if type(parsed) == "table" and type(parsed.Values) == "table" then
+                            loaded = parsed
+                            break
+                        end
                     end
                 end
+            end
+            if not loaded then loaded = config.MemoryProfiles[config.Selected] end
+            if type(loaded) == "table" and type(loaded.Values) == "table" then
+                config.LoadedValues = loaded.Values
             end
         end
     end
@@ -1962,6 +2017,10 @@ function PuckUI:CreateWindow(settings)
     end
 
     function window:Destroy()
+        -- Avoid dropping changes when unloading between two auto-save checks.
+        if config.Enabled and config.AutoSave and config.Ready then
+            pcall(function() self:_WriteConfig(config.Selected, false) end)
+        end
         self:ClosePopup()
         SharedUIState.Windows[self] = nil
 
@@ -3377,18 +3436,16 @@ function PuckUI:CreateWindow(settings)
         tab:CreateSection("Profiles")
 
         config.StatusLabel = tab:CreateLabel(
-            config.Available
-                and ("Ready • " .. config.Selected)
-                or "Unavailable • executor filesystem APIs missing"
+            config.Persistent
+                and ("Persistent profiles available • " .. config.Selected)
+                or ("Session-only profiles • " .. config.Selected)
         )
-
-        if not config.Available then
+        if not config.Persistent then
             tab:CreateParagraph({
-                Title = "Persistent configs unavailable",
-                Content = "This executor needs writefile, readfile, isfile and makefolder for saved configs. The rest of PuckAFK still works normally.",
-                Height = 64,
+                Title = "Executor has no persistent file storage",
+                Content = "Profiles can be saved during this session, but will not survive executor restart. Use JSON export/import to transfer them manually; nothing is uploaded.",
+                Height = 72,
             })
-            return tab
         end
 
         config.ProfilesDropdown = tab:CreateDropdown({
@@ -3469,6 +3526,59 @@ function PuckUI:CreateWindow(settings)
                         Duration = 2,
                     })
                 end
+            end,
+        })
+
+        tab:CreateSection("Manual Export & Import")
+        tab:CreateLabel("Exports may include personal values stored in script settings.")
+        tab:CreateButton({
+            Name = "Export Profile JSON",
+            Callback = function()
+                local encoded = jsonEncode({
+                    Version = 2, ConfigId = config.Id,
+                    Profile = config.Selected, Values = self:_SnapshotConfigValues(),
+                })
+                if not encoded then
+                    setConfigStatus("Export failed • invalid JSON data")
+                    return
+                end
+                local clipboard = type(setclipboard) == "function" and setclipboard
+                    or (type(toclipboard) == "function" and toclipboard or nil)
+                if clipboard and pcall(clipboard, encoded) then
+                    setConfigStatus("JSON copied • " .. config.Selected)
+                else
+                    print("[PuckAFK Config JSON] " .. encoded)
+                    setConfigStatus("No clipboard API • JSON printed to executor console")
+                end
+            end,
+        })
+        local importInput = tab:CreateInput({
+            Name = "Import JSON", PlaceholderText = "Paste a PuckAFK config export",
+            CurrentValue = "", NoConfig = true,
+        })
+        tab:CreateButton({
+            Name = "Import JSON Profile",
+            Callback = function()
+                local encoded = importInput and importInput:Get() or ""
+                local parsed = jsonDecode(encoded)
+                if type(parsed) ~= "table" or type(parsed.Values) ~= "table" then
+                    setConfigStatus("Invalid JSON profile")
+                    return
+                end
+                if parsed.ConfigId ~= nil and parsed.ConfigId ~= config.Id then
+                    setConfigStatus("Wrong game config • " .. tostring(parsed.ConfigId))
+                    return
+                end
+                local proposed = sanitizeFileComponent(parsed.Profile or config.Selected, "default")
+                config.Selected = proposed
+                self:_ApplyConfigValues(parsed.Values)
+                self:_WriteConfig(proposed, false)
+                if config.ProfilesDropdown and config.ProfilesDropdown.Refresh then
+                    config.ProfilesDropdown:Refresh(self:_ListConfigProfiles())
+                    config.ProfilesDropdown:Set(proposed)
+                end
+                setConfigStatus(config.Persistent and "JSON imported • profile saved if writable"
+                    or "JSON imported • session only")
             end,
         })
 
@@ -3778,16 +3888,16 @@ function PuckUI:CreateWindow(settings)
     task.spawn(function()
         task.wait(1.0)
 
-        if not config.Available or not config.Enabled then
-            return
-        end
+        if not config.Enabled then return end
 
         config.Ready = true
         config.LastFingerprint = window:_ConfigFingerprint()
 
         -- If Auto Save is enabled and the selected profile does not exist yet,
         -- create it from the script's current defaults/loaded state.
-        if config.AutoSave and not FileAPI.IsFile(configFilePath(config.Selected)) then
+        local present = config.MemoryProfiles[config.Selected] ~= nil
+            or (config.Persistent and FileAPI.IsFile(configFilePath(config.Selected)))
+        if config.AutoSave and not present then
             window:_WriteConfig(config.Selected, false)
         end
 
@@ -3796,7 +3906,9 @@ function PuckUI:CreateWindow(settings)
                 local fingerprint = window:_ConfigFingerprint()
 
                 if fingerprint ~= ""
-                    and fingerprint ~= config.LastFingerprint then
+                    and fingerprint ~= config.LastFingerprint
+                    and (not config.LastFailedSaveAt
+                        or os.clock() - config.LastFailedSaveAt >= 15) then
                     window:_WriteConfig(config.Selected, false)
                 end
             end
