@@ -1518,79 +1518,74 @@ function PuckUI:CreateWindow(settings)
     end
 
     function window:_ReadConfig(profile, showNotification)
-        if not config.Available then
-            setConfigStatus("Configs unavailable • executor filesystem APIs missing")
-            return false
-        end
-
+        if not config.Enabled then return false end
         local cleanProfile = sanitizeFileComponent(profile or config.Selected, "default")
         local path = configFilePath(cleanProfile)
-
-        if not FileAPI.IsFile(path) then
-            setConfigStatus("Not found • " .. cleanProfile)
+        local data, source
+        if config.Persistent then
+            for _, candidate in ipairs({path, path .. ".bak"}) do
+                if FileAPI.IsFile(candidate) then
+                    local ok, contents = pcall(FileAPI.Read, candidate)
+                    local parsed = ok and jsonDecode(contents)
+                    if type(parsed) == "table" and type(parsed.Values) == "table" then
+                        data, source = parsed, candidate == path and "disk" or "backup"
+                        break
+                    end
+                end
+            end
+        end
+        if not data then
+            local saved = config.MemoryProfiles[cleanProfile]
+            if type(saved) == "table" and type(saved.Values) == "table" then
+                data, source = saved, "session"
+            end
+        end
+        if not data then
+            setConfigStatus("Not found or unreadable • " .. cleanProfile)
             if showNotification then
                 PuckUI:Notify({
                     Title = "Configs",
-                    Content = "Config not found: " .. cleanProfile,
-                    Duration = 2.5,
+                    Content = "No readable profile: " .. cleanProfile, Duration = 3,
                 })
             end
             return false
         end
-
-        local ok, text = pcall(FileAPI.Read, path)
-        if not ok then
-            setConfigStatus("Load failed • could not read file")
-            return false
-        end
-
-        local data = jsonDecode(text)
-        if type(data) ~= "table" or type(data.Values) ~= "table" then
-            setConfigStatus("Load failed • invalid config file")
-            return false
-        end
-
         config.Selected = cleanProfile
         config.LoadedValues = data.Values
         self:_ApplyConfigValues(data.Values)
         self:_SaveConfigMeta()
-        setConfigStatus("Loaded • " .. cleanProfile)
-
+        setConfigStatus("Loaded (" .. source .. ") • " .. cleanProfile)
         if showNotification then
             PuckUI:Notify({
                 Title = "Configs",
-                Content = "Loaded " .. cleanProfile,
-                Duration = 2,
+                Content = "Loaded " .. cleanProfile .. " (" .. source .. ")", Duration = 3,
             })
         end
-
         return true
     end
 
     function window:_DeleteConfig(profile)
-        if not config.Available or not FileAPI.DeleteFile then
-            setConfigStatus("Delete unavailable in this executor")
-            return false
-        end
-
         local cleanProfile = sanitizeFileComponent(profile or config.Selected, "default")
         local path = configFilePath(cleanProfile)
-
-        if not FileAPI.IsFile(path) then
+        if config.Persistent and FileAPI.IsFile(path) then
+            if not FileAPI.DeleteFile then
+                setConfigStatus("Delete unavailable • executor lacks delfile")
+                return false
+            end
+            if not pcall(FileAPI.DeleteFile, path) then
+                setConfigStatus("Delete failed • " .. cleanProfile)
+                return false
+            end
+            if FileAPI.IsFile(path .. ".bak") then
+                pcall(FileAPI.DeleteFile, path .. ".bak")
+            end
+        elseif not config.MemoryProfiles[cleanProfile] then
             setConfigStatus("Not found • " .. cleanProfile)
             return false
         end
-
-        local ok = pcall(FileAPI.DeleteFile, path)
-        if not ok then
-            setConfigStatus("Delete failed • " .. cleanProfile)
-            return false
-        end
-
-        if config.Selected == cleanProfile then
-            config.Selected = "default"
-        end
-
+        config.MemoryProfiles[cleanProfile] = nil
+        config.KnownProfiles[cleanProfile] = nil
+        if config.Selected == cleanProfile then config.Selected = "default" end
         self:_SaveConfigMeta()
         setConfigStatus("Deleted • " .. cleanProfile)
         return true
@@ -1610,6 +1605,8 @@ function PuckUI:CreateWindow(settings)
 
         add(config.Selected)
         add("default")
+        for name in pairs(config.KnownProfiles) do add(name) end
+        for name in pairs(config.MemoryProfiles) do add(name) end
 
         if config.Available and FileAPI.ListFiles then
             local ok, files = pcall(FileAPI.ListFiles, config.Folder)
@@ -1669,20 +1666,27 @@ function PuckUI:CreateWindow(settings)
         end
     end
 
-    if config.Available then
-        ensureFolderPath(config.Folder)
+    if config.Enabled then
+        if config.Persistent then ensureFolderPath(config.Folder) end
         loadConfigMeta()
-
         if config.AutoLoad then
             local path = configFilePath(config.Selected)
-            if FileAPI.IsFile(path) then
-                local ok, text = pcall(FileAPI.Read, path)
-                if ok then
-                    local data = jsonDecode(text)
-                    if type(data) == "table" and type(data.Values) == "table" then
-                        config.LoadedValues = data.Values
+            local loaded
+            if config.Persistent then
+                for _, candidate in ipairs({path, path .. ".bak"}) do
+                    if FileAPI.IsFile(candidate) then
+                        local ok, contents = pcall(FileAPI.Read, candidate)
+                        local parsed = ok and jsonDecode(contents)
+                        if type(parsed) == "table" and type(parsed.Values) == "table" then
+                            loaded = parsed
+                            break
+                        end
                     end
                 end
+            end
+            if not loaded then loaded = config.MemoryProfiles[config.Selected] end
+            if type(loaded) == "table" and type(loaded.Values) == "table" then
+                config.LoadedValues = loaded.Values
             end
         end
     end
@@ -2008,6 +2012,10 @@ function PuckUI:CreateWindow(settings)
     end
 
     function window:Destroy()
+        -- Avoid dropping changes when unloading between two auto-save checks.
+        if config.Enabled and config.AutoSave and config.Ready then
+            pcall(function() self:_WriteConfig(config.Selected, false) end)
+        end
         self:ClosePopup()
         SharedUIState.Windows[self] = nil
 
