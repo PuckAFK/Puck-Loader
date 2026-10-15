@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.9.8 - Classic UI + Tycoon but one dropper Support
+    PuckAFK Hub | Universal Access Loader v5.9.9 - Classic UI + Sword Blast and Tycoon Support
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -28,7 +28,8 @@ local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
-local FREE_LOADER = "https://puckafk.site/loader-free.lua"
+-- Release-scoped cache key prevents older executor/browser caches serving stale game routes.
+local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.34"
 local PREMIUM_API = "https://puckafk.site/api/premium"
 local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/premium"
 local DISCORD_INVITE = "https://discord.gg/NFfs8G2WAz"
