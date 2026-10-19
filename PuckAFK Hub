@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.9.15 - Validated Premium-to-Free Routing
+    PuckAFK Hub | Universal Access Loader v5.9.16 - Persistent Premium Key Screen
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -9,6 +9,9 @@
          Launch the Premium release when available, or Free after validation.
 
     Premium keys are saved locally only after successful validation.
+    v5.9.16: Premium always opens key entry (including saved keys). Rejected,
+    expired, revoked, unavailable and source-error results remain on the same
+    key screen with Retry / Back to Free available. No premium-key bypass.
 
     v5.9 release polish:
       - Preserves the exact classic PuckAFK access-loader layout and proportions.
@@ -528,7 +531,7 @@ local function launchPremium(key, setStatus)
         local validated, validationError = validatePremiumKeyOnly(payload)
         if not validated then
             premiumBusy = false
-            setStatus("Premium key not accepted: " .. tostring(validationError or "validation failed"), true)
+            setStatus("Key not accepted: " .. tostring(validationError or "invalid or expired key"), true)
             return false
         end
         ENV.PuckHubKey = key
@@ -921,7 +924,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
     local currentHeight = openPremiumImmediately and premiumHeight or chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.9.15"
+    ENV.PuckHubLoaderVersion = "5.9.16"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
@@ -1432,7 +1435,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
         accessTween(keyInner, 0.12, {BorderColor3 = THEME.Border})
     end)
 
-    local premiumStatus = accessLabel(premium, savedKey ~= "" and "Saved Premium key detected." or "No saved Premium key.", 9, THEME.DimText, 12)
+    local premiumStatus = accessLabel(premium, savedKey ~= "" and "Saved key found — press Validate to check it." or "Enter a key to validate, or go Back to Free.", 9, THEME.DimText, 12)
     premiumStatus.Position = UDim2.fromOffset(14, 198)
     premiumStatus.Size = UDim2.new(1, -28, 0, 18)
     premiumStatus.TextXAlignment = Enum.TextXAlignment.Center
@@ -1450,23 +1453,32 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
     local validateButton = accessButton(premium, "Validate", "VALIDATE KEY & LAUNCH", UDim2.new(0, 14, 0, 222), UDim2.new(1, -28, 0, 40), function()
         if busy or cancelled then return end
         local key = normalizeKey(keyBox.Text)
-        if key == "" then key = readSavedKey() end
         busy = true
         setPremiumStatus("Validating Premium key...")
         task.spawn(function()
-            local launched = launchPremium(key, function(textValue, isError)
-                setPremiumStatus(textValue, isError, false)
+            local called, launched = pcall(launchPremium, key, function(textValue, isError)
+                if not cancelled and ENV.PuckHubAccessGateGeneration == thisGate then
+                    setPremiumStatus(textValue, isError, false)
+                end
             end)
-            busy = false
-            if launched and not cancelled then
+            busy = false -- A rejected key, HTTP error or exception must never trap the GUI.
+            if cancelled or ENV.PuckHubAccessGateGeneration ~= thisGate then return end
+            if not called then
+                -- Do not echo key or sensitive API contents to the GUI or console.
+                setPremiumStatus("Could not validate key. Retry, or go Back to Free.", true)
+                return
+            end
+            if launched then
                 setPremiumStatus(ENV.PuckHubCurrentAccessMode == "free"
                     and "Free script launched successfully." or "Premium loaded successfully.", false, true)
-                cancelled = true -- intentional close: disable reset recovery
+                cancelled = true -- Close only after a successful launch.
                 accessTween(card, 0.15, {GroupTransparency = 1})
                 accessTween(shadow, 0.15, {BackgroundTransparency = 1})
                 task.wait(0.16)
                 pcall(function() gui:Destroy() end)
             end
+            -- Failure: deliberately stay on this exact Premium screen. Retry
+            -- with the existing key field, or use Back to Access -> Free.
         end)
     end, {ActiveBorderColor3 = THEME.Success})
     accessIcon(validateButton, ICON.ShieldCheck, UDim2.fromOffset(12, 11), UDim2.fromOffset(18, 18), THEME.Success, 24)
@@ -1489,7 +1501,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
     end)
     accessIcon(backButton, ICON.Back, UDim2.fromOffset(9, 7), UDim2.fromOffset(15, 15), THEME.DimText, 24)
 
-    local securityLabel = accessLabel(premium, "Server-side key check required  •  Free fallback only after approval", 9, THEME.DimText, 12)
+    local securityLabel = accessLabel(premium, "Key rejected? Try again or Back to Access for Free.", 9, THEME.DimText, 12)
     securityLabel.Position = UDim2.fromOffset(14, 312)
     securityLabel.Size = UDim2.new(1, -28, 0, 16)
     securityLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -1581,14 +1593,9 @@ if requestedMode == "free" then
     if gameRequiresPremium() then return runAccessGate(true, readSavedChoice()) end
     return launchFree()
 elseif requestedMode == "premium" then
-    local key = readSavedKey()
-    local silentStatus = function(textValue, isError)
-        if isError then warn("[PuckAFK Hub] " .. tostring(textValue)) else print("[PuckAFK Hub] " .. tostring(textValue)) end
-    end
-    if key ~= "" then
-        if launchPremium(key, silentStatus) then return end
-    end
-    -- Explicit Premium entry without a validated key must show the key gate.
+    -- Always show the Premium key screen, even with a saved key. A saved key
+    -- is not an authentication result, and the user must press Validate.
+    -- A failed check leaves the same screen open, where Back selects Free.
     return runAccessGate(true, readSavedChoice())
 end
 
