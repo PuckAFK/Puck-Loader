@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.9.13 - Unified Premium-to-Free Routing
+    PuckAFK Hub | Universal Access Loader v5.9.14 - Unified Premium-to-Free Routing
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -32,7 +32,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 -- Release-scoped cache key prevents older executor/browser caches serving stale game routes.
-local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.48"
+local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.49"
 local PREMIUM_API = "https://puckafk.site/api/premium"
 local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/premium"
 local DISCORD_INVITE = "https://discord.gg/NFfs8G2WAz"
@@ -333,7 +333,17 @@ local function launchFree(setStatus)
         if setStatus then setStatus("Violence District requires Premium access. Choose Premium and validate your key.", true) end
         return false
     end
-    local launchLabel = game.PlaceId == 109949693269081 and "Tycoon, but one dropper" or (game.PlaceId == 113220849219354 and "+1 Sword Blast Evolution" or (game.PlaceId == 70906625936847 and "Gym Star Simulator" or (game.PlaceId == 132239307080610 and "Deep Fishing" or (game.PlaceId == 75766778174856 and "Tower Incremental" or (game.PlaceId == 79389059854988 and "My Anime Mine" or (game.PlaceId == 96124247562170 and "+1 Soldier Evolution" or "Free access"))))))
+    local freeLabels = {
+        [70733580049633] = "Wash the Car",
+        [109949693269081] = "Tycoon, but one dropper",
+        [113220849219354] = "+1 Sword Blast Evolution",
+        [70906625936847] = "Gym Star Simulator",
+        [132239307080610] = "Deep Fishing",
+        [75766778174856] = "Tower Incremental",
+        [79389059854988] = "My Anime Mine",
+        [96124247562170] = "+1 Soldier Evolution",
+    }
+    local launchLabel = freeLabels[game.PlaceId] or "Free access"
     if setStatus then setStatus("Loading " .. launchLabel .. "…") end
     ENV.PuckHubCurrentAccessMode = "free"
     ENV.PuckHubAccessMode = "free"
@@ -865,7 +875,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
     local currentHeight = openPremiumImmediately and premiumHeight or chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.9.13"
+    ENV.PuckHubLoaderVersion = "5.9.14"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
