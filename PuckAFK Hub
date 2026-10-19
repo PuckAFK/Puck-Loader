@@ -1,12 +1,12 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.9.14 - Unified Premium-to-Free Routing
+    PuckAFK Hub | Universal Access Loader v5.9.15 - Validated Premium-to-Free Routing
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
       1. Choose Free or Premium.
       2. Free -> launch the public PuckAFK route for the current game.
-      3. Premium -> auto-launch Free if only a free release exists; otherwise
-         validate a key server-side and launch the Premium source.
+      3. Premium -> validate a key server-side for every game.
+         Launch the Premium release when available, or Free after validation.
 
     Premium keys are saved locally only after successful validation.
 
@@ -35,6 +35,7 @@ local UserInputService = game:GetService("UserInputService")
 local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.49"
 local PREMIUM_API = "https://puckafk.site/api/premium"
 local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/premium"
+local KEY_VALIDATE_API = "https://puckhub-key-api.puckafk.workers.dev/v1/validate"
 local DISCORD_INVITE = "https://discord.gg/NFfs8G2WAz"
 local PREMIUM_PAGE = "https://puckafk.site/premium/"
 local PREMIUM_ONLY_PLACE_IDS = { [93978595733734] = true }
@@ -395,9 +396,8 @@ local function resolvePremium()
     return false, lastError
 end
 
--- A definitive negative response can auto-fall back to Free without asking
--- for a Premium key. A network error, malformed JSON, or non-true `ok`
--- response is NOT permission to treat a Premium game as a free game.
+-- An explicit Free-only resolver response permits Free as a destination ONLY
+-- AFTER the user's Premium key is positively validated. Resolver failures fail closed.
 local function hasOnlyFreeRelease(info)
     return not gameRequiresPremium()
         and type(info) == "table"
@@ -436,13 +436,43 @@ local function postPremiumSource(base, payload)
     return false, status, tostring(message or ("HTTP " .. tostring(status))), detail and detail.code
 end
 
+-- Free-only releases still require a real server-side key check when the user
+-- explicitly chooses Premium. Never infer validity from a saved key or from the
+-- game catalog. The Key API returns {valid=true} only on a successful check.
+local function validatePremiumKeyOnly(payload)
+    local req = requestFn()
+    if type(req) ~= "function" then
+        return false, "This executor does not support secure Premium key requests."
+    end
+    local ok, response = pcall(req, {
+        Url = KEY_VALIDATE_API,
+        Method = "POST",
+        Headers = {
+            ["Content-Type"] = "application/json",
+            ["Accept"] = "application/json",
+        },
+        Body = HttpService:JSONEncode(payload),
+    })
+    if not ok or type(response) ~= "table" then
+        return false, "Could not reach the Premium key validator."
+    end
+    local status = tonumber(response.StatusCode or response.Status or response.status) or 0
+    local detail = decode(response.Body or response.body or "")
+    if status == 200 and type(detail) == "table" and detail.valid == true then
+        return true
+    end
+    if type(detail) == "table" and (detail.message or detail.code) then
+        return false, tostring(detail.message or detail.code)
+    end
+    return false, "Premium key validation failed (HTTP " .. tostring(status) .. ")."
+end
+
 local premiumBusy = false
 local function launchPremium(key, setStatus)
     if premiumBusy then return false end
     premiumBusy = true
 
-    -- Resolve before prompting for a key, so Free-only releases never require
-    -- customers to back out and rerun the loader with a different tier.
+    -- Resolve the script tier, but never bypass Premium key validation.
     setStatus("Checking available script for this game…")
     local resolveOk, info = resolvePremium()
     if not resolveOk then
@@ -451,13 +481,7 @@ local function launchPremium(key, setStatus)
         return false
     end
 
-    if hasOnlyFreeRelease(info) then
-        premiumBusy = false
-        setStatus("No Premium version for this game — launching Free automatically…")
-        return launchFree(setStatus)
-    end
-
-    if type(info) ~= "table" or info.premium ~= true then
+    if not hasOnlyFreeRelease(info) and (type(info) ~= "table" or info.premium ~= true) then
         premiumBusy = false
         setStatus("Premium is not registered for this game. Contact staff.", true)
         return false
@@ -495,6 +519,28 @@ local function launchPremium(key, setStatus)
         robloxUserId = player and tostring(player.UserId) or "Unknown",
         robloxUsername = player and tostring(player.Name) or "Unknown",
     }
+
+    -- A validated Premium selection can legitimately run a Free-only script.
+    -- The Free button still takes the normal keyless path; only this Premium
+    -- selection requires this additional POST /v1/validate round-trip.
+    if hasOnlyFreeRelease(info) then
+        setStatus("Validating your PuckHub key…")
+        local validated, validationError = validatePremiumKeyOnly(payload)
+        if not validated then
+            premiumBusy = false
+            setStatus("Premium key not accepted: " .. tostring(validationError or "validation failed"), true)
+            return false
+        end
+        ENV.PuckHubKey = key
+        local persisted = saveKey(key)
+        if not persisted then
+            warn("[PuckAFK Hub] Premium validated; executor cannot persist the key. Session only.")
+        end
+        setStatus("Key accepted. No Premium release for this game — loading Free…")
+        local loaded = launchFree(setStatus)
+        premiumBusy = false
+        return loaded
+    end
 
     setStatus("Validating your PuckHub key…")
     local okSource, source, reason, errorCode = postPremiumSource(PREMIUM_API, payload)
@@ -875,7 +921,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
     local currentHeight = openPremiumImmediately and premiumHeight or chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.9.14"
+    ENV.PuckHubLoaderVersion = "5.9.15"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
@@ -1244,45 +1290,14 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
         if busy or cancelled then return end
         cancelSavedCountdown()
         if rememberChoice then saveChoice("premium") else clearSavedChoice() end
-        busy = true
-        setChooserStatus("Checking whether this game needs Premium…")
-        task.spawn(function()
-            local resolveOk, info = resolvePremium()
-            if cancelled or ENV.PuckHubAccessGateGeneration ~= thisGate then
-                busy = false
-                return
-            end
-
-            if resolveOk and hasOnlyFreeRelease(info) then
-                setChooserStatus("Free release found — launching automatically…")
-                local launched = launchFree(function(textValue, isError)
-                    setChooserStatus(textValue, isError, not isError)
-                end)
-                busy = false
-                if launched and not cancelled then
-                    setChooserStatus("Free script launched successfully.", false, true)
-                    cancelled = true -- intentional close: disable reset recovery
-                    accessTween(card, 0.14, {GroupTransparency = 1})
-                    accessTween(shadow, 0.14, {BackgroundTransparency = 1})
-                    task.wait(0.15)
-                    pcall(function() gui:Destroy() end)
-                end
-                return
-            end
-
-            busy = false
-            if not cancelled then
-                -- Failed or inconclusive lookups continue to Premium; never
-                -- downgrade a Premium-only release due to an API outage.
-                switchPanel(chooser, premium, "PuckAFK Hub | Premium", premiumHeight, 1)
-            end
-        end)
+        -- Premium selection always displays key entry. Never auto-load Free here.
+        switchPanel(chooser, premium, "PuckAFK Hub | Premium", premiumHeight, 1)
     end
 
     premiumButton = accessButton(chooser, "PremiumAccess", "PREMIUM ACCESS", UDim2.new(0, 14, 0, premiumY), UDim2.new(1, -28, 0, 42), choosePremium)
     accessIcon(premiumButton, ICON.Crown, UDim2.fromOffset(12, 12), UDim2.fromOffset(18, 18), Color3.fromRGB(205, 174, 82), 24)
 
-    local premiumInfo = accessLabel(chooser, "Validate your paid PuckHub key before Premium source delivery", 9, THEME.DimText, 12)
+    local premiumInfo = accessLabel(chooser, "Premium requires a key; Free-only games fall back after validation", 9, THEME.DimText, 12)
     premiumInfo.Position = UDim2.fromOffset(14, premiumY + 43)
     premiumInfo.Size = UDim2.new(1, -28, 0, 14)
     premiumInfo.TextXAlignment = Enum.TextXAlignment.Center
@@ -1432,7 +1447,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
         pulseStatus(premiumStatus, color)
     end
 
-    local validateButton = accessButton(premium, "Validate", "VALIDATE & LAUNCH PREMIUM", UDim2.new(0, 14, 0, 222), UDim2.new(1, -28, 0, 40), function()
+    local validateButton = accessButton(premium, "Validate", "VALIDATE KEY & LAUNCH", UDim2.new(0, 14, 0, 222), UDim2.new(1, -28, 0, 40), function()
         if busy or cancelled then return end
         local key = normalizeKey(keyBox.Text)
         if key == "" then key = readSavedKey() end
@@ -1474,7 +1489,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
     end)
     accessIcon(backButton, ICON.Back, UDim2.fromOffset(9, 7), UDim2.fromOffset(15, 15), THEME.DimText, 24)
 
-    local securityLabel = accessLabel(premium, "Secure server validation  •  source delivered only after success", 9, THEME.DimText, 12)
+    local securityLabel = accessLabel(premium, "Server-side key check required  •  Free fallback only after approval", 9, THEME.DimText, 12)
     securityLabel.Position = UDim2.fromOffset(14, 312)
     securityLabel.Size = UDim2.new(1, -28, 0, 16)
     securityLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -1572,15 +1587,8 @@ elseif requestedMode == "premium" then
     end
     if key ~= "" then
         if launchPremium(key, silentStatus) then return end
-    else
-        -- An explicit Premium launch with no saved key must also support a
-        -- Free-only game without opening an unnecessary Premium key screen.
-        local resolveOk, info = resolvePremium()
-        if resolveOk and hasOnlyFreeRelease(info) then
-            if launchFree(silentStatus) then return end
-            return runAccessGate(false, readSavedChoice())
-        end
     end
+    -- Explicit Premium entry without a validated key must show the key gate.
     return runAccessGate(true, readSavedChoice())
 end
 
