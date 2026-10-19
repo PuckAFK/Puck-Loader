@@ -1464,6 +1464,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
             busy = false -- A rejected key, HTTP error or exception must never trap the GUI.
             if cancelled or ENV.PuckHubAccessGateGeneration ~= thisGate then return end
             if not called then
+                premiumBusy = false -- Reset the internal lock as well; the next retry must work.
                 -- Do not echo key or sensitive API contents to the GUI or console.
                 setPremiumStatus("Could not validate key. Retry, or go Back to Free.", true)
                 return
