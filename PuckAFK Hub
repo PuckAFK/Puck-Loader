@@ -1,20 +1,23 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.9.9 - Classic UI + Sword Blast and Tycoon Support
+    PuckAFK Hub | Universal Access Loader v5.9.13 - Unified Premium-to-Free Routing
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
       1. Choose Free or Premium.
       2. Free -> launch the public PuckAFK route for the current game.
-      3. Premium -> join Discord/get a key, enter it, validate server-side,
-         then launch the paid Premium source for the current game.
+      3. Premium -> auto-launch Free if only a free release exists; otherwise
+         validate a key server-side and launch the Premium source.
 
     Premium keys are saved locally only after successful validation.
 
     v5.9 release polish:
-      - Preserves the classic PuckAFK UI and clipboard-only Discord/Premium links.
-      - Keeps real icons, Remember Choice, animations, and saved keys.
-      - Distinguishes invalid keys from Premium source-delivery failures.
-      - No browser opening or public Premium source URL.
+      - Preserves the exact classic PuckAFK access-loader layout and proportions.
+      - Removes external browser-opening attempts for Discord and Premium website actions.
+      - Copies links to the Windows/system clipboard using executor clipboard APIs instead.
+      - Shows a clear in-loader confirmation so users know exactly what happened.
+      - Supports setclipboard/toclipboard plus common clipboard aliases and nested helpers.
+      - Keeps real icons, Keep My Choice, animations, Premium validation, and key saving.
+      - Correctly distinguishes key rejection from server-side source delivery failure.
 ]]
 
 local ENV = _G
@@ -29,11 +32,16 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 -- Release-scoped cache key prevents older executor/browser caches serving stale game routes.
-local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.34"
+local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.48"
 local PREMIUM_API = "https://puckafk.site/api/premium"
 local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/premium"
 local DISCORD_INVITE = "https://discord.gg/NFfs8G2WAz"
 local PREMIUM_PAGE = "https://puckafk.site/premium/"
+local PREMIUM_ONLY_PLACE_IDS = { [93978595733734] = true }
+local PREMIUM_ONLY_UNIVERSE_IDS = { [6739698191] = true }
+local function gameRequiresPremium()
+    return PREMIUM_ONLY_PLACE_IDS[game.PlaceId] == true or PREMIUM_ONLY_UNIVERSE_IDS[game.GameId] == true
+end
 local KEY_FILE = "PuckHub/premium.key"
 local CHOICE_FILE = "PuckHub/access-choice.txt"
 local KEY_FLAT_FILE = "PuckHub_premium.key"
@@ -53,8 +61,8 @@ local function normalizeChoice(value)
     return ""
 end
 
--- Do not require isfile or makefolder: many executors provide only
--- readfile/writefile. Validate persistence by reading saved bytes back.
+-- No isfile or makefolder requirement: some executors only expose readfile/writefile.
+-- Verify writes by reading back the bytes; never claim a key was persisted if not.
 local function readSavedText(primary, flat)
     if type(readfile) ~= "function" then return nil end
     for _, path in ipairs({primary, flat}) do
@@ -204,6 +212,7 @@ local function copyToClipboard(value)
     value = trim(value)
     if value == "" then return false, "empty-value" end
 
+    -- Direct clipboard functions used by current Windows executors.
     local directNames = {
         "setclipboard", "toclipboard", "set_clipboard", "to_clipboard",
         "writeclipboard", "write_clipboard", "copyclipboard", "copy_clipboard",
@@ -231,6 +240,7 @@ local function copyToClipboard(value)
         if ok then return true, via end
     end
 
+    -- Some executors expose clipboard helpers under a small API table.
     local roots = {
         {rawget(ENV, "clipboard"), "clipboard"},
         {rawget(ENV, "Clipboard"), "Clipboard"},
@@ -319,6 +329,10 @@ local function launchSource(source, label)
 end
 
 local function launchFree(setStatus)
+    if gameRequiresPremium() then
+        if setStatus then setStatus("Violence District requires Premium access. Choose Premium and validate your key.", true) end
+        return false
+    end
     local launchLabel = game.PlaceId == 109949693269081 and "Tycoon, but one dropper" or (game.PlaceId == 113220849219354 and "+1 Sword Blast Evolution" or (game.PlaceId == 70906625936847 and "Gym Star Simulator" or (game.PlaceId == 132239307080610 and "Deep Fishing" or (game.PlaceId == 75766778174856 and "Tower Incremental" or (game.PlaceId == 79389059854988 and "My Anime Mine" or (game.PlaceId == 96124247562170 and "+1 Soldier Evolution" or "Free access"))))))
     if setStatus then setStatus("Loading " .. launchLabel .. "…") end
     ENV.PuckHubCurrentAccessMode = "free"
@@ -371,6 +385,16 @@ local function resolvePremium()
     return false, lastError
 end
 
+-- A definitive negative response can auto-fall back to Free without asking
+-- for a Premium key. A network error, malformed JSON, or non-true `ok`
+-- response is NOT permission to treat a Premium game as a free game.
+local function hasOnlyFreeRelease(info)
+    return not gameRequiresPremium()
+        and type(info) == "table"
+        and info.ok == true
+        and info.premium == false
+end
+
 local function postPremiumSource(base, payload)
     local req = requestFn()
     if type(req) ~= "function" then
@@ -407,6 +431,28 @@ local function launchPremium(key, setStatus)
     if premiumBusy then return false end
     premiumBusy = true
 
+    -- Resolve before prompting for a key, so Free-only releases never require
+    -- customers to back out and rerun the loader with a different tier.
+    setStatus("Checking available script for this game…")
+    local resolveOk, info = resolvePremium()
+    if not resolveOk then
+        premiumBusy = false
+        setStatus("Could not reach the Premium service. Try again in a moment.", true)
+        return false
+    end
+
+    if hasOnlyFreeRelease(info) then
+        premiumBusy = false
+        setStatus("No Premium version for this game — launching Free automatically…")
+        return launchFree(setStatus)
+    end
+
+    if type(info) ~= "table" or info.premium ~= true then
+        premiumBusy = false
+        setStatus("Premium is not registered for this game. Contact staff.", true)
+        return false
+    end
+
     key = normalizeKey(key)
     if key == "" then
         premiumBusy = false
@@ -416,21 +462,6 @@ local function launchPremium(key, setStatus)
     if #key < 8 or #key > 256 then
         premiumBusy = false
         setStatus("That Premium key format does not look valid.", true)
-        return false
-    end
-
-    setStatus("Checking Premium support for this game…")
-    local resolveOk, info = resolvePremium()
-    if not resolveOk then
-        premiumBusy = false
-        setStatus("Could not reach the Premium service. Try again in a moment.", true)
-        return false
-    end
-
-    if not info.premium then
-        premiumBusy = false
-        local gameName = tostring(info.name or "this game")
-        setStatus("No Premium release is available for " .. gameName .. ". Use Free access instead.", true)
         return false
     end
 
@@ -730,7 +761,6 @@ local function createDiscordMark(parent, position, size, zIndex)
     return holder, scale
 end
 
-
 local function createDiscordCard(parent, position, size, callback)
     local card = accessCreate("TextButton", {
         Name = "DiscordCard",
@@ -754,7 +784,7 @@ local function createDiscordCard(parent, position, size, callback)
         ZIndex = 21,
         Parent = card,
     })
-    accessCreate("Frame", {
+    local brand = accessCreate("Frame", {
         Size = UDim2.fromOffset(3, size.Y.Offset - 4),
         Position = UDim2.fromOffset(2, 2),
         BackgroundColor3 = THEME.Discord,
@@ -763,7 +793,7 @@ local function createDiscordCard(parent, position, size, callback)
         Parent = card,
     })
 
-    local _, logoScale = createDiscordMark(card, UDim2.fromOffset(12, math.floor((size.Y.Offset - 36) / 2)), 36, 24)
+    local logo, logoScale = createDiscordMark(card, UDim2.fromOffset(12, math.floor((size.Y.Offset - 36) / 2)), 36, 24)
     local title = accessLabel(card, "PUCKAFK DISCORD", 12, THEME.BrightText, 24)
     title.Position = UDim2.fromOffset(58, 8)
     title.Size = UDim2.new(1, -142, 0, 18)
@@ -818,7 +848,10 @@ local function createDiscordCard(parent, position, size, callback)
     return card, open
 end
 
-local function runAccessGate(openPremiumImmediately, rememberedChoice)
+local function runAccessGate(openPremiumImmediately, rememberedChoice, recoveredKey)
+    -- An older or re-executed gate must never resurrect a duplicate window.
+    ENV.PuckHubAccessGateGeneration = (tonumber(ENV.PuckHubAccessGateGeneration) or 0) + 1
+    local thisGate = ENV.PuckHubAccessGateGeneration
     destroyOldAccessGui()
 
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
@@ -826,10 +859,13 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     local windowWidth = phoneLayout and 350 or 480
     local chooserHeight = phoneLayout and 370 or 348
     local premiumHeight = phoneLayout and 470 or 448
-    local currentHeight = chooserHeight
+    -- The initial premium-only screen must animate to the *premium* height.
+    -- Otherwise the chooser-height tween runs after the direct Premium setup
+    -- and clips the bottom actions until the user navigates Back and forward.
+    local currentHeight = openPremiumImmediately and premiumHeight or chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.9.8"
+    ENV.PuckHubLoaderVersion = "5.9.13"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
@@ -1176,6 +1212,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
             busy = false
             if ok and not cancelled then
                 setChooserStatus("Free access started.", false, true)
+                cancelled = true -- intentional close: disable reset recovery
                 accessTween(card, 0.14, {GroupTransparency = 1})
                 accessTween(shadow, 0.14, {BackgroundTransparency = 1})
                 task.wait(0.15)
@@ -1197,7 +1234,39 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
         if busy or cancelled then return end
         cancelSavedCountdown()
         if rememberChoice then saveChoice("premium") else clearSavedChoice() end
-        switchPanel(chooser, premium, "PuckAFK Hub | Premium", premiumHeight, 1)
+        busy = true
+        setChooserStatus("Checking whether this game needs Premium…")
+        task.spawn(function()
+            local resolveOk, info = resolvePremium()
+            if cancelled or ENV.PuckHubAccessGateGeneration ~= thisGate then
+                busy = false
+                return
+            end
+
+            if resolveOk and hasOnlyFreeRelease(info) then
+                setChooserStatus("Free release found — launching automatically…")
+                local launched = launchFree(function(textValue, isError)
+                    setChooserStatus(textValue, isError, not isError)
+                end)
+                busy = false
+                if launched and not cancelled then
+                    setChooserStatus("Free script launched successfully.", false, true)
+                    cancelled = true -- intentional close: disable reset recovery
+                    accessTween(card, 0.14, {GroupTransparency = 1})
+                    accessTween(shadow, 0.14, {BackgroundTransparency = 1})
+                    task.wait(0.15)
+                    pcall(function() gui:Destroy() end)
+                end
+                return
+            end
+
+            busy = false
+            if not cancelled then
+                -- Failed or inconclusive lookups continue to Premium; never
+                -- downgrade a Premium-only release due to an API outage.
+                switchPanel(chooser, premium, "PuckAFK Hub | Premium", premiumHeight, 1)
+            end
+        end)
     end
 
     premiumButton = accessButton(chooser, "PremiumAccess", "PREMIUM ACCESS", UDim2.new(0, 14, 0, premiumY), UDim2.new(1, -28, 0, 42), choosePremium)
@@ -1207,6 +1276,15 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     premiumInfo.Position = UDim2.fromOffset(14, premiumY + 43)
     premiumInfo.Size = UDim2.new(1, -28, 0, 14)
     premiumInfo.TextXAlignment = Enum.TextXAlignment.Center
+
+    if gameRequiresPremium() then
+        chooserTitle.Text = "Violence District | Premium"
+        chooserDetail.Text = "Premium key required for Violence District"
+        freeButton.Visible = false
+        freeInfo.Visible = false
+        premiumButton.Position = UDim2.new(0, 14, 0, freeY)
+        premiumInfo.Position = UDim2.fromOffset(14, freeY + 43)
+    end
 
     local rememberY = premiumY + 66
     local rememberButton
@@ -1290,7 +1368,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     end, {ActiveBorderColor3 = THEME.Accent})
     accessIcon(premiumPageButton, ICON.Globe, UDim2.fromOffset(10, 7), UDim2.fromOffset(16, 16), THEME.DimText, 24)
 
-    local savedKey = readSavedKey()
+    local savedKey = type(recoveredKey) == "string" and recoveredKey or readSavedKey()
     local keyBox = accessCreate("TextBox", {
         Name = "PremiumKey",
         Position = UDim2.fromOffset(14, 160),
@@ -1356,7 +1434,9 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
             end)
             busy = false
             if launched and not cancelled then
-                setPremiumStatus("Premium loaded successfully.", false, true)
+                setPremiumStatus(ENV.PuckHubCurrentAccessMode == "free"
+                    and "Free script launched successfully." or "Premium loaded successfully.", false, true)
+                cancelled = true -- intentional close: disable reset recovery
                 accessTween(card, 0.15, {GroupTransparency = 1})
                 accessTween(shadow, 0.15, {BackgroundTransparency = 1})
                 task.wait(0.16)
@@ -1389,9 +1469,19 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
     securityLabel.Size = UDim2.new(1, -28, 0, 16)
     securityLabel.TextXAlignment = Enum.TextXAlignment.Center
     securityLabel.TextTruncate = Enum.TextTruncate.AtEnd
-
     if phoneLayout then
         securityLabel.Position = UDim2.fromOffset(14, 318)
+    end
+
+    -- Select the correct initial panel before starting any entrance animation.
+    -- Never change the card's Size mid-tween: direct Premium and manual navigation
+    -- must finish with identical panel dimensions and working bottom buttons.
+    if openPremiumImmediately then
+        chooser.Visible = false
+        chooser.GroupTransparency = 1
+        premium.Visible = true
+        premium.GroupTransparency = 0
+        titleLabel.Text = "PuckAFK Hub | Premium"
     end
 
     card.Size = UDim2.fromOffset(windowWidth, currentHeight - 8)
@@ -1419,16 +1509,32 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice)
         end)
     end
 
-    if openPremiumImmediately then
-        chooser.Visible = false
-        chooser.GroupTransparency = 1
-        premium.Visible = true
-        premium.GroupTransparency = 0
-        titleLabel.Text = "PuckAFK Hub | Premium"
-        currentHeight = premiumHeight
-        card.Size = UDim2.fromOffset(windowWidth, premiumHeight)
-        shadow.Size = UDim2.fromOffset(windowWidth, premiumHeight)
-    end
+    -- Violence District occasionally clears/replaces PlayerGui while the
+    -- access gate is open. ResetOnSpawn=false does not prevent explicit
+    -- game:ClearAllChildren(). Recreate only a missing gate, never after the
+    -- user closes it or launches a script successfully.
+    task.spawn(function()
+        while not cancelled and ENV.PuckHubAccessGateGeneration == thisGate do
+            task.wait(0.8)
+            if cancelled or ENV.PuckHubAccessGateGeneration ~= thisGate then break end
+            local attached = false
+            pcall(function()
+                attached = gui.Parent ~= nil and gui:IsDescendantOf(game)
+                if attached and not gui.Enabled then gui.Enabled = true end
+            end)
+            if not attached and not busy then
+                task.wait(0.5) -- wait for the game's replacement PlayerGui
+                if cancelled or ENV.PuckHubAccessGateGeneration ~= thisGate then break end
+                local premiumWasOpen = openPremiumImmediately
+                local lastKey = ""
+                pcall(function()
+                    premiumWasOpen = premium.Visible == true
+                    lastKey = keyBox.Text
+                end)
+                return runAccessGate(premiumWasOpen, "", lastKey)
+            end
+        end
+    end)
 end
 
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -1447,16 +1553,25 @@ if requestedMode == "" and legacyMode == "premium" and readSavedKey() ~= "" then
 end
 
 if requestedMode == "free" then
+    if gameRequiresPremium() then return runAccessGate(true, readSavedChoice()) end
     return launchFree()
 elseif requestedMode == "premium" then
     local key = readSavedKey()
+    local silentStatus = function(textValue, isError)
+        if isError then warn("[PuckAFK Hub] " .. tostring(textValue)) else print("[PuckAFK Hub] " .. tostring(textValue)) end
+    end
     if key ~= "" then
-        local silentStatus = function(textValue, isError)
-            if isError then warn("[PuckAFK Hub] " .. tostring(textValue)) else print("[PuckAFK Hub] " .. tostring(textValue)) end
-        end
         if launchPremium(key, silentStatus) then return end
+    else
+        -- An explicit Premium launch with no saved key must also support a
+        -- Free-only game without opening an unnecessary Premium key screen.
+        local resolveOk, info = resolvePremium()
+        if resolveOk and hasOnlyFreeRelease(info) then
+            if launchFree(silentStatus) then return end
+            return runAccessGate(false, readSavedChoice())
+        end
     end
     return runAccessGate(true, readSavedChoice())
 end
 
-return runAccessGate(false, readSavedChoice())
+return runAccessGate(gameRequiresPremium(), readSavedChoice())
