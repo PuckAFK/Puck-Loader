@@ -339,7 +339,7 @@ local function launchFree(setStatus)
     end
     local freeLabels = {
         [70733580049633] = "Wash the Car",
-        [139717576471404] = "RoChess!", 
+        [139717576471404] = "RoChess!",
         [109949693269081] = "Tycoon, but one dropper",
         [113220849219354] = "+1 Sword Blast Evolution",
         [70906625936847] = "Gym Star Simulator",
