@@ -35,7 +35,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 -- Release-scoped cache key prevents older executor/browser caches serving stale game routes.
-local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.53"
+local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.56"
 local PREMIUM_API = "https://puckafk.site/api/premium"
 local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/premium"
 local KEY_VALIDATE_API = "https://puckhub-key-api.puckafk.workers.dev/v1/validate"
@@ -339,6 +339,7 @@ local function launchFree(setStatus)
     end
     local freeLabels = {
         [70733580049633] = "Wash the Car",
+        [135169917851408] = "Merge Hackers",
         [139717576471404] = "RoChess!",
         [109949693269081] = "Tycoon, but one dropper",
         [113220849219354] = "+1 Sword Blast Evolution",
