@@ -1,5 +1,5 @@
 --[[
-    PuckAFK Hub | Universal Access Loader v5.9.16 - Persistent Premium Key Screen
+    PuckAFK Hub | Universal Access Loader v5.9.17 - Persistent Premium Key Screen
     Canonical URL: https://puckafk.site/loader.lua
 
     Default flow:
@@ -35,7 +35,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 -- Release-scoped cache key prevents older executor/browser caches serving stale game routes.
-local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.49"
+local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.53"
 local PREMIUM_API = "https://puckafk.site/api/premium"
 local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/premium"
 local KEY_VALIDATE_API = "https://puckhub-key-api.puckafk.workers.dev/v1/validate"
@@ -339,6 +339,7 @@ local function launchFree(setStatus)
     end
     local freeLabels = {
         [70733580049633] = "Wash the Car",
+        [139717576471404] = "RoChess!", 
         [109949693269081] = "Tycoon, but one dropper",
         [113220849219354] = "+1 Sword Blast Evolution",
         [70906625936847] = "Gym Star Simulator",
@@ -924,7 +925,7 @@ local function runAccessGate(openPremiumImmediately, rememberedChoice, recovered
     local currentHeight = openPremiumImmediately and premiumHeight or chooserHeight
     local cancelled = false
     local busy = false
-    ENV.PuckHubLoaderVersion = "5.9.16"
+    ENV.PuckHubLoaderVersion = "5.9.17"
 
     local fitScale = math.min(
         (viewport.X - 16) / math.max(windowWidth, 1),
