@@ -35,7 +35,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 -- Release-scoped cache key prevents older executor/browser caches serving stale game routes.
-local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.75-throw-food"
+local FREE_LOADER = "https://puckafk.site/loader-free.lua?v=6.0.76-throw-food-mac"
 local PREMIUM_API = "https://puckafk.site/api/premium"
 local PREMIUM_API_FALLBACK = "https://puckhub-key-api.puckafk.workers.dev/v1/premium"
 local KEY_VALIDATE_API = "https://puckhub-key-api.puckafk.workers.dev/v1/validate"
