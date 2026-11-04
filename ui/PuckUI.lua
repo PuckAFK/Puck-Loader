@@ -1,5 +1,5 @@
 --[[
-    PuckUI v3.8.0 - Motion & Transition Polish
+    PuckUI v3.8.1 - Multi-Executor Config Compatibility
     Shared PuckAFK game-script UI.
 
     v3.7.1 change: dragging via the title bar now clamps live to the
@@ -38,7 +38,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local PuckUI = {
-    Version = "3.8.0",
+    Version = "3.8.1",
     Flags = {},
     Window = nil,
 }
@@ -120,13 +120,30 @@ if SharedConfigState.AutoLoadDefault == nil then
     SharedConfigState.AutoLoadDefault = true
 end
 
+-- Resolve filesystem APIs in both injected global and executor shared environments.
+-- Madium / Real / Potassium and macOS executors expose different scope layouts.
+-- Keep the existing nested->flat config path fallback below this lookup.
+local function fileFunction(name, direct)
+    if type(direct) == "function" then return direct end
+    for _, root in ipairs({SharedEnvironment, _G}) do
+        if type(root) == "table" then
+            local ok, value = pcall(rawget, root, name)
+            if ok and type(value) == "function" then return value end
+        end
+    end
+    local ok, threadEnv = pcall(function() return getfenv(0) end)
+    if ok and type(threadEnv) == "table" then
+        local available, value = pcall(rawget, threadEnv, name)
+        if available and type(value) == "function" then return value end
+    end
+end
 local FileAPI = {
-    Write = type(writefile) == "function" and writefile or nil,
-    Read = type(readfile) == "function" and readfile or nil,
-    IsFile = type(isfile) == "function" and isfile or nil,
-    MakeFolder = type(makefolder) == "function" and makefolder or nil,
-    ListFiles = type(listfiles) == "function" and listfiles or nil,
-    DeleteFile = type(delfile) == "function" and delfile or nil,
+    Write = fileFunction("writefile", writefile),
+    Read = fileFunction("readfile", readfile),
+    IsFile = fileFunction("isfile", isfile),
+    MakeFolder = fileFunction("makefolder", makefolder),
+    ListFiles = fileFunction("listfiles", listfiles),
+    DeleteFile = fileFunction("delfile", delfile),
 }
 
 local function sanitizeFileComponent(value, fallback)
